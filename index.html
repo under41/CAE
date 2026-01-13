@@ -1,170 +1,239 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>ブックラック強度シミュレーター</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: sans-serif; }
-        #ui {
-            position: absolute; top: 20px; width: 100%;
-            text-align: center; color: white; pointer-events: none;
-        }
-        .controls {
-            position: absolute; bottom: 20px; left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px;
-            color: white; pointer-events: auto;
-        }
-        #drop-zone {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; align-items: center; justify-content: center;
-            color: #777; border: 2px dashed #444; z-index: -1;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <title>中学校技術：ブックラック強度診断アプリ</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; background: #f0f2f5; }
+    #sidebar { width: 350px; padding: 20px; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1); overflow-y: auto; }
+    #canvas-container { flex: 1; position: relative; background: #222; }
+    h1 { font-size: 18px; color: #333; }
+    .card { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ddd; }
+    label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555; }
+    input, select, button { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+    button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+    button:hover { background: #0056b3; }
+    button.secondary { background: #6c757d; }
+    .status-ok { color: #28a745; font-weight: bold; }
+    .status-ng { color: #dc3545; font-weight: bold; }
+    .legend { display: flex; align-items: center; margin-top: 10px; font-size: 12px; }
+    .bar { flex: 1; height: 10px; background: linear-gradient(to right, blue, yellow, red); margin: 0 10px; border-radius: 5px; }
+  </style>
 </head>
 <body>
-    <div id="ui">
-        <h2>強度シミュレーター (教育用)</h2>
-        <p id="msg">STLファイルをドロップしてください</p>
+
+<div id="sidebar">
+  <h1>🛠️ 強度シミュレーター</h1>
+  
+  <div class="card">
+    <label>1. 設計図(STL)を読み込む</label>
+    <input type="file" id="fileInput" accept=".stl">
+  </div>
+
+  <div class="card">
+    <label>2. 載せる本の重さ (kg)</label>
+    <input type="range" id="weightRange" min="1" max="50" value="5">
+    <div id="weightValue" style="text-align: center; font-weight: bold;">5 kg</div>
+  </div>
+
+  <div class="card">
+    <label>診断メッセージ</label>
+    <div id="judgeBox">モデルを読み込んで、棚板をクリックしてください。</div>
+    <div class="legend">
+      <span>安全</span><div class="bar"></div><span>危険</span>
     </div>
+  </div>
 
-    <div class="controls">
-        <button onclick="resetColors()">負荷をリセット</button>
-        <span style="margin-left:15px;">棚板をクリックして本を置く場所を指定してください</span>
-    </div>
+  <button class="secondary" onclick="location.reload()">やり直す</button>
+  
+  <p style="font-size: 11px; color: #777; margin-top: 20px;">
+    ※このアプリは、クリックした場所に重さがかかった時の「たわみ」をシミュレーションします。赤い場所ほど負担が大きいです。
+  </p>
+</div>
 
-    <div id="drop-zone">ここにファイルをドロップ</div>
+<div id="canvas-container">
+  <div id="view"></div>
+</div>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x222222);
-        
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
-        camera.position.set(200, 200, 200);
+let scene, camera, renderer, controls, mesh;
+let originalVertices = []; // 元の形を保存
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+const view = document.getElementById('view');
+const weightRange = document.getElementById('weightRange');
+const weightValue = document.getElementById('weightValue');
+const judgeBox = document.getElementById('judgeBox');
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
+// 初期化
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x222222);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-        const light = new THREE.DirectionalLight(0xffffff, 0.8);
-        light.position.set(1, 1, 1);
-        scene.add(light);
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 3000);
+  camera.position.set(200, 150, 200);
 
-        let mesh = null;
-        let originalColors = null;
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth - 350, window.innerHeight);
+  view.appendChild(renderer.domElement);
 
-        // --- ファイル読み込み ---
-        window.addEventListener('dragover', (e) => e.preventDefault());
-        window.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const file = e.dataTransfer.files[0];
-            if (file && file.name.endsWith('.stl')) {
-                const reader = new FileReader();
-                reader.onload = (event) => initModel(event.target.result);
-                reader.readAsArrayBuffer(file);
-            }
-        });
+  controls = new OrbitControls(camera, renderer.domElement);
+  
+  const light1 = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+  scene.add(light1);
+  const light2 = new THREE.DirectionalLight(0xffffff, 1);
+  light2.position.set(100, 100, 100);
+  scene.add(light2);
 
-        function initModel(data) {
-            if (mesh) scene.remove(mesh);
-            const loader = new STLLoader();
-            const geometry = loader.parse(data);
-            geometry.center();
+  animate();
+}
 
-            // 初期色（全頂点を青に）
-            const count = geometry.attributes.position.count;
-            const colors = new Float32Array(count * 3);
-            for (let i = 0; i < count; i++) {
-                colors[i*3] = 0.1; colors[i*3+1] = 0.2; colors[i*3+2] = 0.8;
-            }
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            originalColors = colors.slice();
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
 
-            const material = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.DoubleSide });
-            mesh = new THREE.Mesh(geometry, material);
-            scene.add(mesh);
-            document.getElementById('msg').innerText = "モデル読み込み完了！棚板をクリックして荷重をシミュレート";
-        }
+// STL読み込み
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-        // --- クリックによる強度変化（ヒートマップ） ---
-        window.addEventListener('click', (event) => {
-            if (!mesh) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const loader = new STLLoader();
+    const geometry = loader.parse(event.target.result);
+    setupMesh(geometry);
+  };
+  reader.readAsArrayBuffer(file);
+});
 
-            // マウス座標を3D空間用に変換
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+function setupMesh(geometry) {
+  if (mesh) scene.remove(mesh);
 
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(mesh);
+  geometry.center();
+  geometry.computeVertexNormals();
 
-            if (intersects.length > 0) {
-                applyStress(intersects[0].point);
-            }
-        });
+  // 元の頂点情報を保存（たわみ計算用）
+  const pos = geometry.attributes.position;
+  originalVertices = new Float32Array(pos.array);
 
-        function applyStress(point) {
-            const geometry = mesh.geometry;
-            const positions = geometry.attributes.position;
-            const colors = geometry.attributes.color;
-            const count = positions.count;
-            
-            const radius = 50; // 負荷が広がる範囲
+  // 初期色（グレー）
+  const colors = new Float32Array(pos.count * 3);
+  for(let i=0; i<pos.count*3; i++) colors[i] = 0.5;
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-            for (let i = 0; i < count; i++) {
-                const vx = positions.getX(i);
-                const vy = positions.getY(i);
-                const vz = positions.getZ(i);
+  const material = new THREE.MeshStandardMaterial({ 
+    vertexColors: true, 
+    flatShading: false,
+    roughness: 0.5 
+  });
+  
+  mesh = new THREE.Mesh(geometry, material);
+  
+  // 大きさ調整
+  geometry.computeBoundingBox();
+  const size = geometry.boundingBox.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = 150 / maxDim;
+  mesh.scale.setScalar(scale);
 
-                // クリック地点からの距離を計算
-                const dist = Math.sqrt((vx-point.x)**2 + (vy-point.y)**2 + (vz-point.z)**2);
+  scene.add(mesh);
+  
+  // カメラ位置をモデルに合わせる
+  camera.position.set(150, 100, 150);
+  controls.target.set(0, 0, 0);
+}
 
-                if (dist < radius) {
-                    const ratio = 1 - (dist / radius);
-                    // 距離が近いほど赤(Hue=0)、遠いほど青(Hue=0.7)
-                    const c = new THREE.Color();
-                    c.setHSL(0.7 * (1 - ratio), 1.0, 0.5);
-                    colors.setXYZ(i, c.r, c.g, c.b);
-                }
-            }
-            colors.needsUpdate = true;
-        }
+// 荷重シミュレーション
+window.addEventListener('mousedown', (event) => {
+  if (!mesh) return;
 
-        window.resetColors = function() {
-            if (!mesh) return;
-            mesh.geometry.attributes.color.array.set(originalColors);
-            mesh.geometry.attributes.color.needsUpdate = true;
-        };
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
 
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-        animate();
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(mesh);
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+  if (intersects.length > 0) {
+    simulate(intersects[0].point);
+  }
+});
+
+function simulate(hitPoint) {
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position;
+  const colors = geo.attributes.color;
+  const weight = parseFloat(weightRange.value);
+  
+  // 影響範囲（中学生の作ったモデルサイズに合わせる）
+  const radius = 40; 
+  const strength = weight / 10; // たわみの強さ
+
+  for (let i = 0; i < pos.count; i++) {
+    const idx = i * 3;
+    // ローカル座標をワールド座標に変換して距離判定
+    const v = new THREE.Vector3(originalVertices[idx], originalVertices[idx+1], originalVertices[idx+2]);
+    v.applyMatrix4(mesh.matrixWorld);
+    
+    const dist = v.distanceTo(hitPoint);
+
+    if (dist < radius) {
+      const effect = Math.pow(1 - dist / radius, 2);
+      
+      // 1. 色の変化 (青 -> 黄 -> 赤)
+      const color = new THREE.Color();
+      color.setHSL(0.6 * (1 - effect), 1, 0.5);
+      colors.setXYZ(i, color.r, color.g, color.b);
+
+      // 2. たわみの変化 (Y軸を少し下げる)
+      pos.setY(i, originalVertices[idx+1] - (effect * strength));
+    } else {
+      colors.setXYZ(i, 0.2, 0.2, 0.8); // 範囲外は青
+      pos.setY(i, originalVertices[idx+1]); // 元に戻す
+    }
+  }
+
+  pos.needsUpdate = true;
+  colors.needsUpdate = true;
+
+  // 判定コメント
+  if (weight > 30) {
+    judgeBox.innerHTML = `判定：<span class="status-ng">危険</span><br>重すぎます！板が折れるか、接合部が壊れるかもしれません。`;
+  } else if (weight > 15) {
+    judgeBox.innerHTML = `判定：<span class="status-ng">注意</span><br>少ししなっています。真ん中に「方立（ほうだて）」を入れると安心です。`;
+  } else {
+    judgeBox.innerHTML = `判定：<span class="status-ok">安全</span><br>この重さなら大丈夫そうです。`;
+  }
+}
+
+weightRange.addEventListener('input', () => {
+  weightValue.innerText = weightRange.value + " kg";
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = (window.innerWidth - 350) / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth - 350, window.innerHeight);
+});
+
+init();
+</script>
 </body>
 </html>
