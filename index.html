@@ -3,11 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>STL読み込み＋表示＋寸法抽出＋簡易強度（梁近似）</title>
+  <title>STL簡易CAE（色分け・クリック境界条件・実験マーキング）</title>
 
   <style>
     :root { --gap: 12px; }
-
     body{
       font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
       margin: 16px;
@@ -17,16 +16,15 @@
 
     .wrap{
       display:grid;
-      grid-template-columns: 360px minmax(0, 1fr); /* ←右側が伸び続ける問題対策 */
+      grid-template-columns: 380px minmax(0, 1fr);
       gap: var(--gap);
       align-items:start;
     }
-
     .card{
       border:1px solid #ddd;
       border-radius:12px;
       padding:12px;
-      min-width:0; /* ←grid子要素が縮められずはみ出す問題対策 */
+      min-width:0;
       background:#fff;
     }
 
@@ -36,15 +34,24 @@
       display:block;
       margin: 10px 0 4px;
     }
-    input, select{
+    input, select, button{
       width:100%;
       padding:8px 10px;
       border:1px solid #ccc;
       border-radius:10px;
       font-size:14px;
       box-sizing:border-box;
+      background:#fff;
     }
+    button{ cursor:pointer; font-weight:700; }
+    button.secondary{ background:#f7f7f7; }
+    button.danger{ background:#ffecec; border-color:#ffb3b3; }
 
+    .row2{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .row3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+    .small{ font-size:12px; color:#555; line-height:1.5; }
+    .muted{ color:#666; }
+    .v{ font-weight:800; font-size:18px; }
     .kpi{
       display:grid;
       grid-template-columns: 1fr 1fr;
@@ -57,38 +64,67 @@
       padding:10px;
       min-width:0;
     }
-    .small{
-      font-size:12px;
-      color:#555;
-      line-height:1.5;
-    }
-    .v{ font-weight:800; font-size:18px; }
 
-    /* 3D表示枠 */
     #view{
       width:100%;
-      height:420px;
+      height:460px;
       min-width:0;
       overflow:hidden;
       border:1px solid #ddd;
       border-radius:12px;
       background:#f7f7f7;
+      position:relative;
     }
-    /* three.jsのcanvasがはみ出さない対策 */
     #view canvas{
       display:block;
       width:100% !important;
       height:100% !important;
     }
 
-    .row2{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-    .muted{ color:#666; }
+    .pill{
+      display:inline-block;
+      padding:3px 8px;
+      border-radius:999px;
+      border:1px solid #ddd;
+      background:#fafafa;
+      font-size:12px;
+      margin-right:6px;
+    }
+    .ok{ color:#0a7a0a; font-weight:800; }
+    .ng{ color:#b00020; font-weight:900; }
 
-    .ok{ color:#0a7a0a; font-weight:700; }
-    .ng{ color:#b00020; font-weight:800; }
+    /* 凡例バー */
+    .legend{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-top:10px;
+    }
+    .legend-bar{
+      height:12px;
+      border-radius:999px;
+      border:1px solid #ddd;
+      flex:1;
+      background: linear-gradient(90deg, rgb(0,80,255), rgb(255,0,0));
+    }
+    .legend-labels{
+      display:flex;
+      justify-content:space-between;
+      font-size:12px;
+      color:#555;
+      margin-top:6px;
+    }
+
+    .hint{
+      margin-top:8px;
+      padding:10px;
+      border-radius:12px;
+      border:1px solid #eee;
+      background:#fafafa;
+    }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
   </style>
 
-  <!-- three.js（モジュール） -->
   <script type="importmap">
   {
     "imports": {
@@ -100,7 +136,7 @@
 </head>
 
 <body>
-  <h2>STL読み込み → 表示 → 寸法抽出 → 簡易強度（梁の曲げ近似）</h2>
+  <h2>STL簡易CAE：応力色分け＋クリック境界条件＋実験マーキング</h2>
 
   <div class="wrap">
     <div class="card">
@@ -132,38 +168,53 @@
           <input id="E" type="number" step="0.1" value="10" />
         </div>
         <div>
-          <label>許容応力（MPa）※任意</label>
-          <input id="allow" type="number" step="1" value="30" />
+          <label>荷重 F（N）</label>
+          <input id="F" type="number" step="0.1" value="20" />
         </div>
       </div>
 
       <div class="row2">
         <div>
-          <label>荷重 F（N）</label>
-          <input id="F" type="number" step="0.1" value="20" />
+          <label>許容応力（MPa）</label>
+          <input id="allow" type="number" step="1" value="30" />
         </div>
         <div>
           <label>表示スケール（基準サイズ）</label>
-          <input id="targetSize" type="number" step="1" value="100" />
+          <input id="targetSize" type="number" step="1" value="120" />
         </div>
       </div>
 
       <div class="kpi">
         <div class="box">
-          <div class="small">STLから抽出した L（最大辺）</div>
+          <div class="small">抽出 L（最大辺）</div>
           <div class="v" id="Lmm">-</div>
         </div>
         <div class="box">
-          <div class="small">b（中間辺）</div>
+          <div class="small">抽出 b（中間辺）</div>
           <div class="v" id="bmm">-</div>
         </div>
         <div class="box">
-          <div class="small">h（最小辺）</div>
+          <div class="small">抽出 h（最小辺）</div>
           <div class="v" id="hmm">-</div>
         </div>
         <div class="box">
-          <div class="small">注意</div>
-          <div class="small" id="note">STLの単位は含まれません（mm前提）</div>
+          <div class="small">単位</div>
+          <div class="small" id="note">STLの単位情報はありません（mm前提）</div>
+        </div>
+      </div>
+
+      <div class="row2" style="margin-top:10px;">
+        <div>
+          <label><input id="overrideDims" type="checkbox" style="width:auto; margin-right:6px;">L,b,h を手入力で上書き</label>
+          <div class="small muted">色分けと計算に反映します（表示形状はSTLそのまま）</div>
+        </div>
+        <div>
+          <label>（上書き時）L,b,h（mm）</label>
+          <div class="row3">
+            <input id="L_in" type="number" step="0.1" placeholder="L" />
+            <input id="b_in" type="number" step="0.1" placeholder="b" />
+            <input id="h_in" type="number" step="0.1" placeholder="h" />
+          </div>
         </div>
       </div>
 
@@ -178,19 +229,45 @@
         </div>
       </div>
 
-      <div class="small" id="judge" style="margin-top:8px;"></div>
+      <div class="legend">
+        <span class="pill">凡例</span>
+        <div class="legend-bar" title="青→赤"></div>
+      </div>
+      <div class="legend-labels">
+        <span id="legendLeft">低（安全側）</span>
+        <span id="legendRight">高（危険側）</span>
+      </div>
 
-      <p class="small" style="margin-top:10px;">
-        ※これは <b>外接直方体（L,b,h）に近似</b>して梁計算する簡易モデルです。<br>
-        穴・リブ・曲面・木目・接着不良・加工誤差などは反映しません。<br>
-        「比較して考える」用途を想定しています。
+      <div class="hint small" id="judge"></div>
+
+      <label>クリック境界条件（色分けの基準を現物に近づける）</label>
+      <div class="row2">
+        <button id="startPick" class="secondary">クリック指定を開始</button>
+        <button id="resetPick" class="danger">指定をリセット</button>
+      </div>
+      <div class="small" id="pickState" style="margin-top:6px;">
+        まだ指定していません（未指定時は自動で長手方向に色を付けます）
+      </div>
+
+      <label>実験結果マーキング（破断位置など）</label>
+      <div class="row2">
+        <button id="startMark" class="secondary">マーキング開始</button>
+        <button id="clearMarks" class="danger">マーキング全消去</button>
+      </div>
+      <div class="small muted" style="margin-top:6px;">
+        マーキング中は、モデル上をクリックするとピンが立ちます。
+      </div>
+
+      <p class="small" style="margin-top:12px;">
+        ※これは「外接直方体（L,b,h）で梁に近似」した簡易CAEです。<br>
+        厳密なFEAではありませんが、<b>比較・考察</b>には十分使えます。
       </p>
     </div>
 
     <div class="card">
-      <div id="view" aria-label="3D view"></div>
+      <div id="view"></div>
       <p class="small muted" style="margin-top:10px;">
-        STLはこのページ内で読み込み・表示します（サーバへアップロードしません）。
+        STLはこのページ内で読み込み・表示します（アップロードしません）。
       </p>
     </div>
   </div>
@@ -202,13 +279,13 @@
 
   const $ = (id) => document.getElementById(id);
 
-  // --- three.js scene ---
+  // --- three.js setup ---
   const view = $("view");
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf7f7f7);
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
-  camera.position.set(160, 120, 180);
+  camera.position.set(180, 140, 200);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -220,21 +297,30 @@
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.15));
   const dir = new THREE.DirectionalLight(0xffffff, 0.85);
-  dir.position.set(100, 200, 120);
+  dir.position.set(120, 260, 180);
   scene.add(dir);
 
-  const grid = new THREE.GridHelper(240, 24);
-  grid.position.y = -60;
+  const grid = new THREE.GridHelper(280, 28);
+  grid.position.y = -70;
   scene.add(grid);
 
-  // 参照軸（薄く）
-  const axes = new THREE.AxesHelper(80);
+  const axes = new THREE.AxesHelper(90);
   axes.material.transparent = true;
   axes.material.opacity = 0.35;
   scene.add(axes);
 
   let mesh = null;
-  let dimsMeters = null; // {L,b,h} in meters (mm前提で換算)
+  let dimsExtractedMm = null; // {L,b,h} mm
+  let dimsMeters = null;      // {L,b,h} meters used in calc (override or extracted)
+
+  // --- picking / marking ---
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  let mode = "none"; // "none" | "pick" | "mark"
+  let pickPoints = []; // world positions
+  let pickSpheres = [];
+  let markSpheres = [];
 
   function animate(){
     controls.update();
@@ -243,7 +329,6 @@
   }
   animate();
 
-  // resize
   new ResizeObserver(() => {
     const w = view.clientWidth, h = view.clientHeight;
     camera.aspect = w / h;
@@ -259,10 +344,10 @@
     return Number.isFinite(x) ? `${x.toFixed(2)} ${unit}` : "-";
   }
 
-  // 梁の簡易式（矩形断面）
+  // --- beam formulas (rectangular section) ---
   function computeBeam(L, b, h, F, E, model){
-    const I = b * Math.pow(h,3) / 12;      // m^4
-    const Z = b * Math.pow(h,2) / 6;       // m^3
+    const I = b * Math.pow(h,3) / 12;
+    const Z = b * Math.pow(h,2) / 6;
 
     let Mmax, delta;
     if (model === "cantilever"){
@@ -273,63 +358,223 @@
       delta = (F * Math.pow(L,3)) / (48 * E * I);
     }
     const sigma = Mmax / Z; // Pa
-    return { sigma, delta };
+    return { sigmaMax: sigma, deltaMax: delta };
   }
 
-  function updateCalc(){
+  // --- dims: extracted or override ---
+  function getDimsMmUsed(){
+    if (!dimsExtractedMm) return null;
+    if ($("overrideDims").checked){
+      const L = Number($("L_in").value);
+      const b = Number($("b_in").value);
+      const h = Number($("h_in").value);
+      if ([L,b,h].every(v => Number.isFinite(v) && v > 0)) return { L, b, h };
+    }
+    return dimsExtractedMm;
+  }
+
+  function updateCalcAndColor(){
     syncMatInput();
-    if (!dimsMeters) return;
+    if (!mesh || !dimsExtractedMm) return;
 
     const model = $("model").value;
     const mat = $("mat").value;
     const E = (mat === "custom") ? Number($("E").value) * 1e9 : Number(mat); // Pa
-    const allow = Number($("allow").value) * 1e6; // Pa
     const F = Number($("F").value);
+    const allow = Number($("allow").value) * 1e6; // Pa
 
-    const { L, b, h } = dimsMeters;
-    const r = computeBeam(L, b, h, F, E, model);
+    const dimsMm = getDimsMmUsed();
+    if (!dimsMm) return;
 
-    $("sigma").textContent = fmt(r.sigma / 1e6, "MPa");
-    $("delta").textContent = fmt(r.delta * 1000, "mm");
+    dimsMeters = { L: dimsMm.L/1000, b: dimsMm.b/1000, h: dimsMm.h/1000 };
 
-    const j = $("judge");
+    const r = computeBeam(dimsMeters.L, dimsMeters.b, dimsMeters.h, F, E, model);
+
+    $("sigma").textContent = fmt(r.sigmaMax/1e6, "MPa");
+    $("delta").textContent = fmt(r.deltaMax*1000, "mm");
+
+    // legend labels
     if (Number.isFinite(allow) && allow > 0){
-      const ok = r.sigma <= allow;
+      $("legendLeft").textContent = "低（安全側）";
+      $("legendRight").textContent = "高（許容超えに近い/超える）";
+    } else {
+      $("legendLeft").textContent = "低（相対）";
+      $("legendRight").textContent = "高（相対）";
+    }
+
+    // judgement text
+    const j = $("judge");
+    const sigmaMPa = r.sigmaMax/1e6;
+    if (Number.isFinite(allow) && allow > 0){
+      const ok = r.sigmaMax <= allow;
+      const ratio = r.sigmaMax / allow;
       if (ok){
-        j.innerHTML = `判定：<span class="ok">許容応力以内</span>（簡易モデル）`;
+        j.innerHTML = `判定：<span class="ok">許容応力以内</span>（σmax=${sigmaMPa.toFixed(2)}MPa / 許容=${(allow/1e6).toFixed(0)}MPa, 比=${ratio.toFixed(2)}）`;
       } else {
-        j.innerHTML = `判定：<span class="ng">許容応力を超える可能性</span>（厚み/幅/支え方/荷重を見直し候補）`;
+        j.innerHTML = `判定：<span class="ng">許容応力を超える可能性</span>（σmax=${sigmaMPa.toFixed(2)}MPa / 許容=${(allow/1e6).toFixed(0)}MPa, 比=${ratio.toFixed(2)}）`;
       }
     } else {
       j.textContent = "※許容応力が未設定のため判定なし（σmaxの比較に使えます）";
-      j.className = "small";
     }
+
+    // recolor
+    applyStressColor(mesh, model, r.sigmaMax, allow);
   }
 
-  function setDimsFromGeometryBoundingBox(geo){
+  // --- determine axis for coloring ---
+  function getAutoAxisFromGeometry(geo){
     geo.computeBoundingBox();
     const bb = geo.boundingBox;
-
     const size = new THREE.Vector3();
     bb.getSize(size);
 
-    // L,b,h を「大→中→小」で並べる（単純化）
-    const arr = [size.x, size.y, size.z].sort((a,b)=>b-a);
-    const Lmm = arr[0], bmm = arr[1], hmm = arr[2];
+    let axis = new THREE.Vector3(1,0,0);
+    if (size.y >= size.x && size.y >= size.z) axis = new THREE.Vector3(0,1,0);
+    if (size.z >= size.x && size.z >= size.y) axis = new THREE.Vector3(0,0,1);
 
-    $("Lmm").textContent = `${Lmm.toFixed(1)} mm`;
-    $("bmm").textContent = `${bmm.toFixed(1)} mm`;
-    $("hmm").textContent = `${hmm.toFixed(1)} mm`;
-    $("note").textContent = "STLの単位情報はありません（mm前提で表示・計算）";
-
-    dimsMeters = { L: Lmm/1000, b: bmm/1000, h: hmm/1000 };
+    // origin at bounding box min along that axis in local space (later transformed)
+    return axis;
   }
 
+  function projectAlongAxisWorld(vWorld, originWorld, axisWorld){
+    return vWorld.clone().sub(originWorld).dot(axisWorld);
+  }
+
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+  // --- main: color vertices by (approx) bending stress distribution ---
+  function applyStressColor(meshObj, model, sigmaMaxPa, allowPa){
+    const geo = meshObj.geometry;
+    const pos = geo.attributes.position;
+
+    // choose axis & endpoints
+    let axisWorld, originWorld, endWorld;
+
+    if (pickPoints.length > 0){
+      // user-specified axis based on picked points
+      if (model === "cantilever"){
+        // need 2 points: fixed(0), load(1)
+        if (pickPoints.length >= 2){
+          originWorld = pickPoints[0].clone();
+          endWorld = pickPoints[1].clone();
+          axisWorld = endWorld.clone().sub(originWorld).normalize();
+        }
+      } else {
+        // simple: need supports 0 and 1 (axis), load is 2 (affects distribution)
+        if (pickPoints.length >= 2){
+          originWorld = pickPoints[0].clone();
+          endWorld = pickPoints[1].clone();
+          axisWorld = endWorld.clone().sub(originWorld).normalize();
+        }
+      }
+    }
+
+    if (!axisWorld){
+      // auto axis from geometry (local axis -> world axis via mesh transform)
+      const autoLocalAxis = getAutoAxisFromGeometry(geo); // unit vector
+      axisWorld = autoLocalAxis.clone().applyMatrix4(new THREE.Matrix4().extractRotation(meshObj.matrixWorld)).normalize();
+
+      // set origin/end using world-space bounding box along axis: approximate by using local bbox corners then transform
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+
+      // find min/max projection among bbox corners in local, then transform to world
+      const corners = [
+        new THREE.Vector3(bb.min.x, bb.min.y, bb.min.z),
+        new THREE.Vector3(bb.min.x, bb.min.y, bb.max.z),
+        new THREE.Vector3(bb.min.x, bb.max.y, bb.min.z),
+        new THREE.Vector3(bb.min.x, bb.max.y, bb.max.z),
+        new THREE.Vector3(bb.max.x, bb.min.y, bb.min.z),
+        new THREE.Vector3(bb.max.x, bb.min.y, bb.max.z),
+        new THREE.Vector3(bb.max.x, bb.max.y, bb.min.z),
+        new THREE.Vector3(bb.max.x, bb.max.y, bb.max.z),
+      ].map(v => v.clone().applyMatrix4(meshObj.matrixWorld));
+
+      let minP = Infinity, maxP = -Infinity;
+      let minV = corners[0], maxV = corners[0];
+      for (const cw of corners){
+        const p = cw.dot(axisWorld);
+        if (p < minP){ minP = p; minV = cw; }
+        if (p > maxP){ maxP = p; maxV = cw; }
+      }
+      originWorld = minV.clone();
+      endWorld = maxV.clone();
+    }
+
+    // distribution parameters
+    const Laxis = endWorld.clone().sub(originWorld).dot(axisWorld);
+    const L = Math.max(1e-9, Math.abs(Laxis));
+
+    // for simple beam with 3 picks, use load location to shape triangle peak
+    let peakT = 0.5; // default midspan
+    if (model === "simple" && pickPoints.length >= 3){
+      const loadWorld = pickPoints[2].clone();
+      const t = projectAlongAxisWorld(loadWorld, originWorld, axisWorld) / Laxis;
+      peakT = clamp01(t);
+    }
+
+    const colors = new Float32Array(pos.count * 3);
+    const vLocal = new THREE.Vector3();
+    const vWorld = new THREE.Vector3();
+
+    // Map stress to color:
+    // - If allow provided: ratio = sigma_local / allow, clamp 0..1 (blue->red)
+    // - Else: ratio = sigma_local / sigmaMax (relative)
+    const denom = (Number.isFinite(allowPa) && allowPa > 0) ? allowPa : (sigmaMaxPa || 1);
+
+    for (let i=0; i<pos.count; i++){
+      vLocal.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+      vWorld.copy(vLocal).applyMatrix4(meshObj.matrixWorld);
+
+      // coordinate along axis
+      const tRaw = projectAlongAxisWorld(vWorld, originWorld, axisWorld) / Laxis; // can be negative if Laxis<0
+      const t = clamp01(tRaw);
+
+      // normalized moment shape factor (0..1)
+      let shape;
+      if (model === "cantilever"){
+        // max at fixed end (t=0), 0 at load end (t=1)
+        shape = 1 - t;
+      } else {
+        // triangle peak at peakT, 0 at ends
+        if (t <= peakT){
+          shape = (peakT <= 1e-6) ? 0 : (t / peakT);
+        } else {
+          shape = ((1-peakT) <= 1e-6) ? 0 : ((1 - t) / (1 - peakT));
+        }
+        shape = clamp01(shape);
+      }
+
+      // local stress approx
+      const sigmaLocal = (sigmaMaxPa || 0) * shape;
+
+      const ratio = clamp01(sigmaLocal / denom);
+
+      // blue -> red
+      const r = ratio;
+      const g = 0.15 * (1 - ratio); // 少しだけ中間色が出るように
+      const b = 1 - ratio;
+
+      colors[i*3 + 0] = r;
+      colors[i*3 + 1] = g;
+      colors[i*3 + 2] = b;
+    }
+
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.attributes.color.needsUpdate = true;
+
+    // ensure material uses vertex colors
+    if (meshObj.material && meshObj.material.vertexColors !== true){
+      meshObj.material.vertexColors = true;
+      meshObj.material.needsUpdate = true;
+    }
+  }
+
+  // --- STL load pipeline ---
   function fitCameraToObject(obj){
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-
     const maxSize = Math.max(size.x, size.y, size.z);
     const dist = maxSize * 1.6;
 
@@ -339,11 +584,63 @@
     controls.update();
   }
 
+  function clearPickVisuals(){
+    for (const s of pickSpheres){
+      scene.remove(s);
+      s.geometry.dispose();
+      s.material.dispose();
+    }
+    pickSpheres = [];
+  }
+
+  function clearMarkVisuals(){
+    for (const s of markSpheres){
+      scene.remove(s);
+      s.geometry.dispose();
+      s.material.dispose();
+    }
+    markSpheres = [];
+  }
+
+  function addSphere(worldPos, kind){
+    const geom = new THREE.SphereGeometry(3.0, 16, 16);
+    const mat = new THREE.MeshStandardMaterial({
+      color: (kind==="pick") ? 0x00aa88 : 0xff5533,
+      roughness: 0.5,
+      metalness: 0.05
+    });
+    const s = new THREE.Mesh(geom, mat);
+    s.position.copy(worldPos);
+    scene.add(s);
+    return s;
+  }
+
+  function setDimsFromGeometryBoundingBox(geo){
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+
+    const arr = [size.x, size.y, size.z].sort((a,b)=>b-a);
+    const Lmm = arr[0], bmm = arr[1], hmm = arr[2];
+
+    dimsExtractedMm = { L: Lmm, b: bmm, h: hmm };
+
+    $("Lmm").textContent = `${Lmm.toFixed(1)} mm`;
+    $("bmm").textContent = `${bmm.toFixed(1)} mm`;
+    $("hmm").textContent = `${hmm.toFixed(1)} mm`;
+
+    // 初回だけ入力欄にも入れておく
+    if (!$("L_in").value) $("L_in").value = Lmm.toFixed(1);
+    if (!$("b_in").value) $("b_in").value = bmm.toFixed(1);
+    if (!$("h_in").value) $("h_in").value = hmm.toFixed(1);
+  }
+
   function loadSTLFromArrayBuffer(arrayBuffer){
     const loader = new STLLoader();
     const geometry = loader.parse(arrayBuffer);
 
-    // 既存メッシュがあれば削除
+    // remove old
     if (mesh){
       scene.remove(mesh);
       mesh.geometry.dispose();
@@ -351,71 +648,168 @@
       mesh = null;
     }
 
-    // 見えやすい材質（確実に見える）
+    // reset picks/marks (モデルが変わったらやり直しが安全)
+    mode = "none";
+    pickPoints = [];
+    clearPickVisuals();
+    clearMarkVisuals();
+    $("pickState").textContent = "まだ指定していません（未指定時は自動で長手方向に色を付けます）";
+
+    // material with vertex colors
     const material = new THREE.MeshStandardMaterial({
-      color: 0x6b7280,
-      metalness: 0.05,
-      roughness: 0.85
+      vertexColors: true,
+      color: 0xffffff,
+      roughness: 0.85,
+      metalness: 0.05
     });
 
     mesh = new THREE.Mesh(geometry, material);
 
-    // ===== 見えない問題対策：センタリング＋自動スケール =====
+    // center + scale for visibility
     geometry.computeBoundingBox();
     const bb = geometry.boundingBox;
 
     const center = new THREE.Vector3();
     bb.getCenter(center);
-    mesh.position.sub(center); // 原点へ
+    mesh.position.sub(center);
 
     const size = new THREE.Vector3();
     bb.getSize(size);
     const maxSize = Math.max(size.x, size.y, size.z);
-    const target = Math.max(10, Number($("targetSize").value) || 100);
+    const target = Math.max(10, Number($("targetSize").value) || 120);
     const s = target / maxSize;
     mesh.scale.setScalar(s);
 
     scene.add(mesh);
 
-    // 寸法抽出（計算用）※スケール前の幾何サイズを読む：geometryのbboxでOK
+    // dims extraction (mm前提)
     setDimsFromGeometryBoundingBox(geometry);
-    updateCalc();
 
-    // カメラフィット（スケール後のmeshに対して）
     fitCameraToObject(mesh);
+    updateCalcAndColor();
   }
 
+  // --- UI events ---
   $("file").addEventListener("change", (ev) => {
     const f = ev.target.files?.[0];
     if (!f) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
-      loadSTLFromArrayBuffer(reader.result);
-    };
+    reader.onload = () => loadSTLFromArrayBuffer(reader.result);
     reader.readAsArrayBuffer(f);
   });
 
-  ["model","mat","E","allow","F","targetSize"].forEach(id => {
+  ["model","mat","E","F","allow","overrideDims","L_in","b_in","h_in"].forEach(id => {
     $(id).addEventListener("input", () => {
-      if (id === "targetSize" && mesh){
-        // targetSize変更時は再スケールしてカメラフィットし直す
-        // geometryはmesh.geometry
-        const geo = mesh.geometry;
-        geo.computeBoundingBox();
-        const bb = geo.boundingBox;
-        const size = new THREE.Vector3();
-        bb.getSize(size);
-        const maxSize = Math.max(size.x, size.y, size.z);
-        const target = Math.max(10, Number($("targetSize").value) || 100);
-        const s = target / maxSize;
-        mesh.scale.setScalar(s);
-        fitCameraToObject(mesh);
-      }
-      updateCalc();
+      updatePickInstruction();
+      updateCalcAndColor();
     });
   });
 
+  $("targetSize").addEventListener("input", () => {
+    if (!mesh) return;
+    const geo = mesh.geometry;
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+    const maxSize = Math.max(size.x, size.y, size.z);
+    const target = Math.max(10, Number($("targetSize").value) || 120);
+    const s = target / maxSize;
+    mesh.scale.setScalar(s);
+    fitCameraToObject(mesh);
+    updateCalcAndColor();
+  });
+
+  function updatePickInstruction(){
+    const model = $("model").value;
+    if (!mesh) return;
+
+    if (mode !== "pick") return;
+    if (model === "cantilever"){
+      const need = 2;
+      const names = ["固定点（固定端）", "荷重点（力がかかる点）"];
+      const next = pickPoints.length < need ? names[pickPoints.length] : "完了";
+      $("pickState").textContent = `クリック指定中：次は「${next}」をモデル上でクリック（${pickPoints.length}/${need}）`;
+    } else {
+      const need = 3;
+      const names = ["左支持点", "右支持点", "荷重点"];
+      const next = pickPoints.length < need ? names[pickPoints.length] : "完了";
+      $("pickState").textContent = `クリック指定中：次は「${next}」をモデル上でクリック（${pickPoints.length}/${need}）`;
+    }
+  }
+
+  $("startPick").addEventListener("click", () => {
+    if (!mesh) return;
+    mode = "pick";
+    pickPoints = [];
+    clearPickVisuals();
+    updatePickInstruction();
+  });
+
+  $("resetPick").addEventListener("click", () => {
+    mode = "none";
+    pickPoints = [];
+    clearPickVisuals();
+    $("pickState").textContent = "指定をリセットしました（未指定時は自動で長手方向に色を付けます）";
+    updateCalcAndColor();
+  });
+
+  $("startMark").addEventListener("click", () => {
+    if (!mesh) return;
+    mode = "mark";
+    $("pickState").textContent = "マーキング中：モデル上をクリックするとピンが追加されます（終了するには「クリック指定を開始」or 何もしない）";
+  });
+
+  $("clearMarks").addEventListener("click", () => {
+    clearMarkVisuals();
+  });
+
+  // --- click handling on canvas ---
+  function getIntersects(event){
+    if (!mesh) return [];
+    const rect = renderer.domElement.getBoundingClientRect();
+    const x = ( (event.clientX - rect.left) / rect.width ) * 2 - 1;
+    const y = - ( (event.clientY - rect.top) / rect.height ) * 2 + 1;
+    mouse.set(x, y);
+    raycaster.setFromCamera(mouse, camera);
+    return raycaster.intersectObject(mesh, false);
+  }
+
+  renderer.domElement.addEventListener("pointerdown", (ev) => {
+    if (!mesh) return;
+    if (mode !== "pick" && mode !== "mark") return;
+
+    const hits = getIntersects(ev);
+    if (!hits.length) return;
+
+    const p = hits[0].point; // world point
+
+    if (mode === "mark"){
+      const s = addSphere(p, "mark");
+      markSpheres.push(s);
+      return;
+    }
+
+    // mode === "pick"
+    const model = $("model").value;
+    const need = (model === "cantilever") ? 2 : 3;
+
+    pickPoints.push(p.clone());
+    const s = addSphere(p, "pick");
+    pickSpheres.push(s);
+
+    if (pickPoints.length >= need){
+      mode = "none";
+      $("pickState").textContent = "クリック指定完了。色分けに反映しました（再指定したい場合は「クリック指定を開始」）。";
+      updateCalcAndColor();
+    } else {
+      updatePickInstruction();
+      updateCalcAndColor();
+    }
+  });
+
+  // init
   syncMatInput();
 </script>
 </body>
