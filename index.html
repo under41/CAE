@@ -73,14 +73,14 @@
   <header>
     <span class="badge">木材</span>
     <h1>かんたんCAE：赤⇄青で“危ない場所”を直感表示（釘なし）</h1>
-    <span class="badge">2回目以降も反映OK</span>
+    <span class="badge">色＝σ/許容（体感できる版）</span>
   </header>
 
   <div class="wrap">
     <aside class="panel">
       <div class="note">
         STLを読み込んで「解析する」を押すだけ。<br/>
-        ✅ 2回目以降も値変更が効くように「uniform更新方式」に修正済み。
+        ✅ 色は <b>σ/許容応力</b>（危険度）なので、荷重を軽くすれば青く寄ります。
       </div>
 
       <h2>① STLを読み込む</h2>
@@ -156,12 +156,12 @@
       </div>
       <canvas id="canvas"></canvas>
       <div class="legend">
-        <div style="font-size:12px;color:rgba(233,238,252,0.85);">色：曲げ応力 σ(x)</div>
+        <div style="font-size:12px;color:rgba(233,238,252,0.85);">色：危険度（σ/許容）</div>
         <div class="bar"></div>
-        <div class="small"><span>小（青）</span><span>大（赤）</span></div>
+        <div class="small"><span>安全（青）</span><span>危険（赤）</span></div>
         <div class="small" style="margin-top:6px;">
-          <span>最大</span>
-          <span id="legendMax">— MPa</span>
+          <span id="legendMin">許容= — MPa</span>
+          <span id="legendMax">最大= — MPa</span>
         </div>
       </div>
     </main>
@@ -211,6 +211,7 @@
     const outMax = el("outMax");
     const outSF = el("outSF");
     const outDbg = el("outDbg");
+    const legendMin = el("legendMin");
     const legendMax = el("legendMax");
 
     loadPos.addEventListener("input", ()=> loadPosTxt.textContent = loadPos.value);
@@ -330,7 +331,6 @@
     function makeHeatMaterial(){
       const mat = new THREE.MeshStandardMaterial({ roughness:0.75, metalness:0.0 });
 
-      // 初期パラメータ（保持用）
       mat.userData.params = {
         show: 0,
         axis: 0,
@@ -342,7 +342,8 @@
         P: 200,
         a: 0.5,
         w: 200,
-        sigmaMax: 1.0,
+        sigmaMax: 1.0,      // 表示用（最大応力）
+        allowPa: 20e6,      // ★追加：許容応力（Pa）
         baseColor: new THREE.Color(0x9fb2ff),
       };
 
@@ -360,9 +361,9 @@
         shader.uniforms.ua        = { value: p.a };
         shader.uniforms.uw        = { value: p.w };
         shader.uniforms.uSigmaMax = { value: p.sigmaMax };
+        shader.uniforms.uAllowPa  = { value: p.allowPa }; // ★追加
         shader.uniforms.uBase     = { value: p.baseColor.clone() };
 
-        // shader参照を保持（2回目以降はここを直接更新する）
         mat.userData.shader = shader;
 
         shader.vertexShader = shader.vertexShader
@@ -383,6 +384,7 @@
             uniform float ua;
             uniform float uw;
             uniform float uSigmaMax;
+            uniform float uAllowPa;   // ★追加
             uniform vec3 uBase;
 
             float getX(vec3 p){
@@ -411,8 +413,10 @@
               }else{
                 float xLocal = clamp(getX(vPos) - uMinA, 0.0, uL);
                 float M = abs(moment(xLocal));
-                float sigma = M * (uH*0.5) / max(uI, 1e-18);
-                float t = clamp(sigma / max(uSigmaMax, 1e-12), 0.0, 1.0);
+                float sigma = M * (uH*0.5) / max(uI, 1e-18); // Pa
+
+                // ★ここが本命：色は「σ/許容」で決める（Pを軽くすると青くなる）
+                float t = clamp(sigma / max(uAllowPa, 1e-6), 0.0, 1.0);
                 vec3 heat = vec3(t, 0.0, 1.0 - t); // 青→赤
                 diffuseColor.rgb = heat;
               }
@@ -438,10 +442,10 @@
       u.ua.value        = p.a;
       u.uw.value        = p.w;
       u.uSigmaMax.value = p.sigmaMax;
+      u.uAllowPa.value  = p.allowPa;     // ★追加
       u.uBase.value.copy(p.baseColor);
     }
 
-    // STL load
     const loader = new STLLoader();
     stlFile.addEventListener("change", async (ev)=>{
       const file = ev.target.files?.[0];
@@ -471,13 +475,12 @@
         centerAndFit();
         setStatus("STL読み込みOK","good");
 
-        // まずは単色表示（解析前）
         heatMat.userData.params.show = 0;
-        // シェーダがまだ無い場合もあるので、次フレームで反映
         requestAnimationFrame(() => applyParamsToUniforms());
 
         outL.textContent = outBH.textContent = outMax.textContent = outSF.textContent = outDbg.textContent = "—";
-        legendMax.textContent = "— MPa";
+        legendMin.textContent = "許容= — MPa";
+        legendMax.textContent = "最大= — MPa";
       }catch(e){
         console.error(e);
         setStatus("STL読み込み失敗","bad");
@@ -514,11 +517,13 @@
         w = Math.max(1e-9, num(loadMag.value, 200));
       }
 
-      // 理論最大モーメント
       const maxM = (lt==="point") ? (P * a * (L-a) / L) : (w * L * L / 8.0);
-      const sigmaMax = Math.max(1e-12, Math.abs(maxM) * (h*0.5) / Math.max(I, 1e-18));
+      const sigmaMax = Math.max(1e-12, Math.abs(maxM) * (h*0.5) / Math.max(I, 1e-18)); // Pa
 
-      // 表示更新（重要：needsUpdateしない。uniformだけ更新）
+      // ★許容応力（Pa）をparamsへ（色に効く）
+      const allow = num(allowMPa.value, 20);     // MPa
+      const allowPa = allow * 1e6;
+
       const p = heatMat.userData.params;
       p.show = 1;
       p.axis = axisIndex;
@@ -530,23 +535,24 @@
       p.P = P;
       p.a = a;
       p.w = w;
-      p.sigmaMax = sigmaMax;
+      p.sigmaMax = sigmaMax;    // 表示用
+      p.allowPa = allowPa;      // ★色の基準
+      applyParamsToUniforms();
 
-      applyParamsToUniforms(); // ✅ 2回目以降もここで確実に変わる
-
-      // UI
       const maxMPa = sigmaMax / 1e6;
-      const allow = num(allowMPa.value, 20);
       const sf = (maxMPa > 0) ? (allow / maxMPa) : Infinity;
 
       outL.textContent = `${nice(L,3)} m（軸:${axisSelVal.toUpperCase()}）`;
       outBH.textContent = `${nice(b,3)} m × ${nice(h,3)} m`;
       outMax.textContent = `${nice(maxMPa,3)} MPa`;
       outSF.textContent = isFinite(sf) ? nice(sf,3) : "—";
-      legendMax.textContent = `${nice(maxMPa,3)} MPa`;
+      legendMin.textContent = `許容= ${nice(allow,3)} MPa`;
+      legendMax.textContent = `最大= ${nice(maxMPa,3)} MPa`;
+
+      const util = (allow > 0) ? (maxMPa / allow) : Infinity;
       outDbg.textContent = (lt==="point")
-        ? `P=${nice(P,3)}N a=${nice(a,3)}m max|M|=${nice(maxM,3)} N·m`
-        : `w=${nice(w,3)}N/m max|M|=${nice(maxM,3)} N·m`;
+        ? `P=${nice(P,3)}N a=${nice(a,3)}m max|M|=${nice(maxM,3)} N·m / 利用率=${nice(util,3)}`
+        : `w=${nice(w,3)}N/m max|M|=${nice(maxM,3)} N·m / 利用率=${nice(util,3)}`;
 
       setStatus("解析できました", sf>=1 ? "good" : "bad");
     });
@@ -556,12 +562,13 @@
         setStatus("リセットしました","info");
         return;
       }
-      heatMat.userData.params.show = 0;   // ✅ material差し替え禁止。showを切るだけ
+      heatMat.userData.params.show = 0;
       applyParamsToUniforms();
 
       setStatus("リセットしました","info");
       outL.textContent = outBH.textContent = outMax.textContent = outSF.textContent = outDbg.textContent = "—";
-      legendMax.textContent = "— MPa";
+      legendMin.textContent = "許容= — MPa";
+      legendMax.textContent = "最大= — MPa";
     });
   </script>
 </body>
