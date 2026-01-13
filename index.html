@@ -1,16 +1,30 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
+    <meta charset="UTF-8">
     <title>ブックラック強度シミュレーター</title>
     <style>
-        body { margin: 0; }
-        canvas { display: block; }
-        #info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; }
+        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: sans-serif; }
+        #info {
+            position: absolute; top: 20px; width: 100%;
+            text-align: center; color: white;
+            pointer-events: none; /* UIの邪魔をしない */
+        }
+        .drop-zone {
+            border: 2px dashed #777;
+            padding: 20px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #777;
+        }
     </style>
 </head>
 <body>
-    <div id="info">STLファイルをドラッグ＆ドロップしてください</div>
-    
+    <div id="info">
+        <h2>強度シミュレーター</h2>
+        <p>STLファイルをここにドロップしてください</p>
+    </div>
+
     <script type="importmap">
         {
             "imports": {
@@ -23,42 +37,94 @@
     <script type="module">
         import * as THREE from 'three';
         import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        // 1. シーン・カメラ・レンダラーの準備
+        // --- シーンの基本設定 ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        scene.background = new THREE.Color(0x222222);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(200, 200, 200);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // 2. STL読み込みと「強度色」の適用関数
-        const loader = new STLLoader();
-        function loadModel(url) {
-            loader.load(url, function (geometry) {
-                // 頂点ごとの色（Vertex Color）を計算するロジック
-                geometry.computeBoundingBox();
-                const zMax = geometry.boundingBox.max.z;
-                const zMin = geometry.boundingBox.min.z;
-                
-                const count = geometry.attributes.position.count;
-                const colors = [];
-                const color = new THREE.Color();
+        // マウスで動かせるようにする
+        const controls = new OrbitControls(camera, renderer.domElement);
 
-                for (let i = 0; i < count; i++) {
-                    const z = geometry.attributes.position.getZ(i);
-                    // 例：高さ(Z軸)に応じて青から赤へ（便宜上のデモ）
-                    const ratio = (z - zMin) / (zMax - zMin);
-                    color.setHSL(0.7 * (1 - ratio), 1.0, 0.5); // 0.7は青、0は赤
-                    colors.push(color.r, color.g, color.b);
-                }
-                
-                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                
-                const material = new THREE.MeshPhongMaterial({ vertexColors: true });
-                const mesh = new THREE.Mesh(geometry, material);
-                scene.add(mesh);
+        // --- ライト（これがないと真っ暗になります） ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // --- ドラッグ＆ドロップ処理 ---
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.stl')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    loadSTL(event.target.result);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // --- STL読み込みと色付けロジック ---
+        const loader = new STLLoader();
+        let currentMesh = null;
+
+        function loadSTL(data) {
+            if (currentMesh) scene.remove(currentMesh);
+
+            const geometry = loader.parse(data);
+            geometry.center(); // モデルを中央に配置
+
+            // 強度の視覚化ロジック（仮：Y軸の高さで色を変える）
+            geometry.computeBoundingBox();
+            const { min, max } = geometry.boundingBox;
+            const colors = [];
+            const color = new THREE.Color();
+            const positions = geometry.attributes.position;
+
+            for (let i = 0; i < positions.count; i++) {
+                const y = positions.getY(i);
+                // 下の方が青(安全)、上の方が赤(負荷)とする簡易デモ
+                const ratio = (y - min.y) / (max.y - min.y);
+                color.setHSL(0.7 * (1 - ratio), 1.0, 0.5); 
+                colors.push(color.r, color.g, color.b);
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            const material = new THREE.MeshPhongMaterial({ 
+                vertexColors: true, 
+                side: THREE.DoubleSide 
             });
+
+            currentMesh = new THREE.Mesh(geometry, material);
+            scene.add(currentMesh);
+            
+            document.getElementById('info').innerHTML = "<h2>読み込み完了</h2><p>マウスで回転・ズームできます</p>";
         }
+
+        // --- アニメーションループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // ウィンドウサイズ変更対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
