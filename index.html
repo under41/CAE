@@ -3,18 +3,89 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>STL読み込み＋簡易強度（梁近似）</title>
+  <title>STL読み込み＋表示＋寸法抽出＋簡易強度（梁近似）</title>
+
   <style>
-    body{font-family:system-ui,-apple-system,"Yu Gothic",sans-serif;margin:16px}
-    .wrap{display:grid;grid-template-columns:360px 1fr;gap:12px}
-    .card{border:1px solid #ddd;border-radius:12px;padding:12px}
-    label{font-size:12px;color:#333;display:block;margin:8px 0 4px}
-    input,select{width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:10px}
-    #view{width:100%;height:420px;border:1px solid #ddd;border-radius:12px;overflow:hidden}
-    .kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-    .kpi .box{border:1px solid #eee;border-radius:12px;padding:10px}
-    .v{font-weight:800;font-size:18px}
-    .small{font-size:12px;color:#555;line-height:1.5}
+    :root { --gap: 12px; }
+
+    body{
+      font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      margin: 16px;
+      color:#111;
+    }
+    h2{ margin: 0 0 12px; font-size: 20px; }
+
+    .wrap{
+      display:grid;
+      grid-template-columns: 360px minmax(0, 1fr); /* ←右側が伸び続ける問題対策 */
+      gap: var(--gap);
+      align-items:start;
+    }
+
+    .card{
+      border:1px solid #ddd;
+      border-radius:12px;
+      padding:12px;
+      min-width:0; /* ←grid子要素が縮められずはみ出す問題対策 */
+      background:#fff;
+    }
+
+    label{
+      font-size:12px;
+      color:#333;
+      display:block;
+      margin: 10px 0 4px;
+    }
+    input, select{
+      width:100%;
+      padding:8px 10px;
+      border:1px solid #ccc;
+      border-radius:10px;
+      font-size:14px;
+      box-sizing:border-box;
+    }
+
+    .kpi{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      margin-top:10px;
+    }
+    .kpi .box{
+      border:1px solid #eee;
+      border-radius:12px;
+      padding:10px;
+      min-width:0;
+    }
+    .small{
+      font-size:12px;
+      color:#555;
+      line-height:1.5;
+    }
+    .v{ font-weight:800; font-size:18px; }
+
+    /* 3D表示枠 */
+    #view{
+      width:100%;
+      height:420px;
+      min-width:0;
+      overflow:hidden;
+      border:1px solid #ddd;
+      border-radius:12px;
+      background:#f7f7f7;
+    }
+    /* three.jsのcanvasがはみ出さない対策 */
+    #view canvas{
+      display:block;
+      width:100% !important;
+      height:100% !important;
+    }
+
+    .row2{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .muted{ color:#666; }
+
+    .ok{ color:#0a7a0a; font-weight:700; }
+    .ng{ color:#b00020; font-weight:800; }
   </style>
 
   <!-- three.js（モジュール） -->
@@ -27,57 +98,99 @@
   }
   </script>
 </head>
+
 <body>
-  <h2>STL読み込み → 寸法抽出 → 簡易強度（梁の曲げ近似）</h2>
+  <h2>STL読み込み → 表示 → 寸法抽出 → 簡易強度（梁の曲げ近似）</h2>
 
   <div class="wrap">
     <div class="card">
-      <label>STLファイル</label>
+      <label>STLファイル（ローカル）</label>
       <input id="file" type="file" accept=".stl" />
 
-      <label>近似モデル</label>
-      <select id="model">
-        <option value="cantilever">片持ち梁（先端集中荷重）</option>
-        <option value="simple">単純支持梁（中央集中荷重）</option>
-      </select>
+      <div class="row2">
+        <div>
+          <label>近似モデル</label>
+          <select id="model">
+            <option value="cantilever">片持ち梁（先端集中荷重）</option>
+            <option value="simple">単純支持梁（中央集中荷重）</option>
+          </select>
+        </div>
+        <div>
+          <label>材料（ヤング率 E）</label>
+          <select id="mat">
+            <option value="10000000000">木材（目安 10 GPa）</option>
+            <option value="69000000000">アルミ（69 GPa）</option>
+            <option value="200000000000">鋼（200 GPa）</option>
+            <option value="custom">手入力</option>
+          </select>
+        </div>
+      </div>
 
-      <label>材料（ヤング率 E）</label>
-      <select id="mat">
-        <option value="10000000000">木材（目安 10 GPa）</option>
-        <option value="69000000000">アルミ（69 GPa）</option>
-        <option value="200000000000">鋼（200 GPa）</option>
-        <option value="custom">手入力</option>
-      </select>
+      <div class="row2">
+        <div>
+          <label>E（GPa）※手入力時</label>
+          <input id="E" type="number" step="0.1" value="10" />
+        </div>
+        <div>
+          <label>許容応力（MPa）※任意</label>
+          <input id="allow" type="number" step="1" value="30" />
+        </div>
+      </div>
 
-      <label>E（GPa）※手入力時</label>
-      <input id="E" type="number" step="0.1" value="10" />
-
-      <label>荷重 F（N）</label>
-      <input id="F" type="number" step="0.1" value="20" />
-
-      <label class="small">STLから抽出した寸法（mm）</label>
-      <div class="kpi">
-        <div class="box"><div class="small">L</div><div class="v" id="Lmm">-</div></div>
-        <div class="box"><div class="small">b</div><div class="v" id="bmm">-</div></div>
-        <div class="box"><div class="small">h</div><div class="v" id="hmm">-</div></div>
-        <div class="box"><div class="small">注意</div><div class="small" id="note">-</div></div>
+      <div class="row2">
+        <div>
+          <label>荷重 F（N）</label>
+          <input id="F" type="number" step="0.1" value="20" />
+        </div>
+        <div>
+          <label>表示スケール（基準サイズ）</label>
+          <input id="targetSize" type="number" step="1" value="100" />
+        </div>
       </div>
 
       <div class="kpi">
-        <div class="box"><div class="small">最大曲げ応力 σmax</div><div class="v" id="sigma">-</div></div>
-        <div class="box"><div class="small">最大たわみ δmax</div><div class="v" id="delta">-</div></div>
+        <div class="box">
+          <div class="small">STLから抽出した L（最大辺）</div>
+          <div class="v" id="Lmm">-</div>
+        </div>
+        <div class="box">
+          <div class="small">b（中間辺）</div>
+          <div class="v" id="bmm">-</div>
+        </div>
+        <div class="box">
+          <div class="small">h（最小辺）</div>
+          <div class="v" id="hmm">-</div>
+        </div>
+        <div class="box">
+          <div class="small">注意</div>
+          <div class="small" id="note">STLの単位は含まれません（mm前提）</div>
+        </div>
       </div>
 
-      <p class="small">
-        ※これは「STL形状を外接直方体に近似して梁計算」する簡易モデルです。<br>
-        形が複雑（穴・リブ・曲面）なほど誤差は増えます。
+      <div class="kpi">
+        <div class="box">
+          <div class="small">最大曲げ応力 σmax</div>
+          <div class="v" id="sigma">-</div>
+        </div>
+        <div class="box">
+          <div class="small">最大たわみ δmax</div>
+          <div class="v" id="delta">-</div>
+        </div>
+      </div>
+
+      <div class="small" id="judge" style="margin-top:8px;"></div>
+
+      <p class="small" style="margin-top:10px;">
+        ※これは <b>外接直方体（L,b,h）に近似</b>して梁計算する簡易モデルです。<br>
+        穴・リブ・曲面・木目・接着不良・加工誤差などは反映しません。<br>
+        「比較して考える」用途を想定しています。
       </p>
     </div>
 
     <div class="card">
-      <div id="view"></div>
-      <p class="small">
-        STLはこのページ内で読み込んで表示します（サーバへアップロードする実装にはしていません）。
+      <div id="view" aria-label="3D view"></div>
+      <p class="small muted" style="margin-top:10px;">
+        STLはこのページ内で読み込み・表示します（サーバへアップロードしません）。
       </p>
     </div>
   </div>
@@ -94,26 +207,34 @@
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf7f7f7);
 
-  const camera = new THREE.PerspectiveCamera(45, view.clientWidth / view.clientHeight, 0.1, 1000);
-  camera.position.set(120, 90, 140);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+  camera.position.set(160, 120, 180);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(view.clientWidth, view.clientHeight);
   view.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-  dir.position.set(100, 200, 100);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.15));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+  dir.position.set(100, 200, 120);
   scene.add(dir);
 
-  const grid = new THREE.GridHelper(200, 20);
+  const grid = new THREE.GridHelper(240, 24);
+  grid.position.y = -60;
   scene.add(grid);
 
+  // 参照軸（薄く）
+  const axes = new THREE.AxesHelper(80);
+  axes.material.transparent = true;
+  axes.material.opacity = 0.35;
+  scene.add(axes);
+
   let mesh = null;
-  let dims = null; // {L,b,h} in meters
+  let dimsMeters = null; // {L,b,h} in meters (mm前提で換算)
 
   function animate(){
     controls.update();
@@ -134,12 +255,14 @@
     $("E").disabled = $("mat").value !== "custom";
   }
 
-  function fmt(x, unit){ return Number.isFinite(x) ? `${x.toFixed(2)} ${unit}` : "-"; }
+  function fmt(x, unit){
+    return Number.isFinite(x) ? `${x.toFixed(2)} ${unit}` : "-";
+  }
 
+  // 梁の簡易式（矩形断面）
   function computeBeam(L, b, h, F, E, model){
-    // I = b h^3 / 12, Z = b h^2 / 6
-    const I = b * Math.pow(h,3) / 12;
-    const Z = b * Math.pow(h,2) / 6;
+    const I = b * Math.pow(h,3) / 12;      // m^4
+    const Z = b * Math.pow(h,2) / 6;       // m^3
 
     let Mmax, delta;
     if (model === "cantilever"){
@@ -149,47 +272,57 @@
       Mmax = F * L / 4;
       delta = (F * Math.pow(L,3)) / (48 * E * I);
     }
-    const sigma = Mmax / Z;
+    const sigma = Mmax / Z; // Pa
     return { sigma, delta };
   }
 
   function updateCalc(){
     syncMatInput();
-    if (!dims) return;
+    if (!dimsMeters) return;
 
     const model = $("model").value;
     const mat = $("mat").value;
     const E = (mat === "custom") ? Number($("E").value) * 1e9 : Number(mat); // Pa
+    const allow = Number($("allow").value) * 1e6; // Pa
     const F = Number($("F").value);
 
-    const {L, b, h} = dims; // meters
+    const { L, b, h } = dimsMeters;
     const r = computeBeam(L, b, h, F, E, model);
 
-    $("sigma").textContent = fmt(r.sigma/1e6, "MPa");
-    $("delta").textContent = fmt(r.delta*1000, "mm");
+    $("sigma").textContent = fmt(r.sigma / 1e6, "MPa");
+    $("delta").textContent = fmt(r.delta * 1000, "mm");
+
+    const j = $("judge");
+    if (Number.isFinite(allow) && allow > 0){
+      const ok = r.sigma <= allow;
+      if (ok){
+        j.innerHTML = `判定：<span class="ok">許容応力以内</span>（簡易モデル）`;
+      } else {
+        j.innerHTML = `判定：<span class="ng">許容応力を超える可能性</span>（厚み/幅/支え方/荷重を見直し候補）`;
+      }
+    } else {
+      j.textContent = "※許容応力が未設定のため判定なし（σmaxの比較に使えます）";
+      j.className = "small";
+    }
   }
 
-  function setDimsFromBoundingBox(geo){
+  function setDimsFromGeometryBoundingBox(geo){
     geo.computeBoundingBox();
     const bb = geo.boundingBox;
 
-    // three.js units are "whatever the STL uses"
-    // 多くのSTLはmm想定ですが保証はないので注意表示
     const size = new THREE.Vector3();
     bb.getSize(size);
 
-    // L = 最大辺、残りを b,h とする（単純化）
+    // L,b,h を「大→中→小」で並べる（単純化）
     const arr = [size.x, size.y, size.z].sort((a,b)=>b-a);
     const Lmm = arr[0], bmm = arr[1], hmm = arr[2];
 
     $("Lmm").textContent = `${Lmm.toFixed(1)} mm`;
     $("bmm").textContent = `${bmm.toFixed(1)} mm`;
     $("hmm").textContent = `${hmm.toFixed(1)} mm`;
+    $("note").textContent = "STLの単位情報はありません（mm前提で表示・計算）";
 
-    $("note").textContent = "STLの単位がmm前提（違う場合は寸法がズレます）";
-
-    // meters
-    dims = { L: Lmm/1000, b: bmm/1000, h: hmm/1000 };
+    dimsMeters = { L: Lmm/1000, b: bmm/1000, h: hmm/1000 };
   }
 
   function fitCameraToObject(obj){
@@ -198,12 +331,58 @@
     const center = box.getCenter(new THREE.Vector3());
 
     const maxSize = Math.max(size.x, size.y, size.z);
-    const fitDist = maxSize * 1.6;
+    const dist = maxSize * 1.6;
 
-    camera.position.set(center.x + fitDist, center.y + fitDist*0.6, center.z + fitDist);
+    camera.position.set(center.x + dist, center.y + dist*0.6, center.z + dist);
     camera.lookAt(center);
     controls.target.copy(center);
     controls.update();
+  }
+
+  function loadSTLFromArrayBuffer(arrayBuffer){
+    const loader = new STLLoader();
+    const geometry = loader.parse(arrayBuffer);
+
+    // 既存メッシュがあれば削除
+    if (mesh){
+      scene.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      mesh = null;
+    }
+
+    // 見えやすい材質（確実に見える）
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x6b7280,
+      metalness: 0.05,
+      roughness: 0.85
+    });
+
+    mesh = new THREE.Mesh(geometry, material);
+
+    // ===== 見えない問題対策：センタリング＋自動スケール =====
+    geometry.computeBoundingBox();
+    const bb = geometry.boundingBox;
+
+    const center = new THREE.Vector3();
+    bb.getCenter(center);
+    mesh.position.sub(center); // 原点へ
+
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+    const maxSize = Math.max(size.x, size.y, size.z);
+    const target = Math.max(10, Number($("targetSize").value) || 100);
+    const s = target / maxSize;
+    mesh.scale.setScalar(s);
+
+    scene.add(mesh);
+
+    // 寸法抽出（計算用）※スケール前の幾何サイズを読む：geometryのbboxでOK
+    setDimsFromGeometryBoundingBox(geometry);
+    updateCalc();
+
+    // カメラフィット（スケール後のmeshに対して）
+    fitCameraToObject(mesh);
   }
 
   $("file").addEventListener("change", (ev) => {
@@ -212,40 +391,31 @@
 
     const reader = new FileReader();
     reader.onload = () => {
-      const arrayBuffer = reader.result;
-      const loader = new STLLoader();
-      const geometry = loader.parse(arrayBuffer);
-
-      // 古いメッシュがあれば削除
-      if (mesh){
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-      }
-
-      const material = new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.05, roughness: 0.8 });
-      mesh = new THREE.Mesh(geometry, material);
-
-      // 見やすいように中央へ
-      geometry.computeBoundingBox();
-      const bb = geometry.boundingBox;
-      const center = new THREE.Vector3();
-      bb.getCenter(center);
-      mesh.position.sub(center);
-
-      scene.add(mesh);
-
-      // 寸法抽出（簡易：外接直方体）
-      // positionを引いてもサイズは変わらないのでgeometryのbboxでOK
-      setDimsFromBoundingBox(geometry);
-
-      fitCameraToObject(mesh);
-      updateCalc();
+      loadSTLFromArrayBuffer(reader.result);
     };
     reader.readAsArrayBuffer(f);
   });
 
-  ["model","mat","E","F"].forEach(id => $(id).addEventListener("input", updateCalc));
+  ["model","mat","E","allow","F","targetSize"].forEach(id => {
+    $(id).addEventListener("input", () => {
+      if (id === "targetSize" && mesh){
+        // targetSize変更時は再スケールしてカメラフィットし直す
+        // geometryはmesh.geometry
+        const geo = mesh.geometry;
+        geo.computeBoundingBox();
+        const bb = geo.boundingBox;
+        const size = new THREE.Vector3();
+        bb.getSize(size);
+        const maxSize = Math.max(size.x, size.y, size.z);
+        const target = Math.max(10, Number($("targetSize").value) || 100);
+        const s = target / maxSize;
+        mesh.scale.setScalar(s);
+        fitCameraToObject(mesh);
+      }
+      updateCalc();
+    });
+  });
+
   syncMatInput();
 </script>
 </body>
