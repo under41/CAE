@@ -139,7 +139,7 @@
       border:1px solid rgba(255,255,255,0.10);
       border-radius:14px;
       padding:10px 10px;
-      min-width: 220px;
+      min-width: 240px;
       backdrop-filter: blur(10px);
     }
     .legend .bar{
@@ -159,7 +159,7 @@
       border:1px solid rgba(255,255,255,0.10);
       border-radius:14px;
       padding:10px 12px;
-      max-width: 720px;
+      max-width: 760px;
       font-size:12px;
       color:rgba(233,238,252,0.88);
       backdrop-filter: blur(10px);
@@ -184,9 +184,9 @@
   <div class="wrap">
     <aside class="panel">
       <div class="note">
-        ✅ 接合（釘）は左右2か所<br/>
-        ✅ ズームは「飛ばない」ように自前で超マイルド化<br/>
-        ✅ 薄い板でも色が出るように、色付けを <strong>|M(x)|×|y|</strong> ベースに改善
+        ✅ 色は <strong>曲げモーメント |M(x)|</strong>（長さ方向）で決めます → 薄板でも確実にグラデが出ます<br/>
+        ✅ 最大応力は <strong>|M|×(h/2)/I</strong> を長さ方向にサンプリングして算出（頂点に依存しない）<br/>
+        ✅ 接合（釘）は左右2か所判定 / ✅ ズームは飛ばない（自前で超マイルド）
       </div>
 
       <h2>① STLを読み込む</h2>
@@ -239,7 +239,7 @@
         <div class="row" style="margin-top:10px;">
           <div>
             <label id="loadMagLabel">重さ P（N）</label>
-            <input id="loadMag" type="number" value="100" min="1" step="1" />
+            <input id="loadMag" type="number" value="100" min="0" step="1" />
           </div>
           <div id="loadPosWrap">
             <label>位置（左→右）</label>
@@ -287,7 +287,7 @@
           </div>
         </div>
 
-        <div class="hint">左右それぞれで判定します（どちらかNGなら全体NG）。</div>
+        <div class="hint">左右それぞれで判定（どちらかNGなら全体NG）。</div>
       </div>
 
       <div class="btns">
@@ -318,17 +318,16 @@
 
     <main class="view">
       <div class="toast">
-        操作：回転＝左ドラッグ / 移動＝右ドラッグ（またはShift+左ドラッグ）<br/>
-        ✅ ズーム：ホイール（超マイルド・飛ばない）<br/>
+        操作：回転＝左ドラッグ / 移動＝右ドラッグ（またはShift+左ドラッグ） / ズーム＝ホイール（超マイルド）<br/>
         <span id="live">（起動チェック中…）</span>
       </div>
       <canvas id="canvas"></canvas>
       <div class="legend">
-        <div style="font-size:12px;color:rgba(233,238,252,0.85);">負荷（色）</div>
+        <div style="font-size:12px;color:rgba(233,238,252,0.85);">色：|M(x)|（青→赤）</div>
         <div class="bar"></div>
         <div class="small"><span>小（青）</span><span>大（赤）</span></div>
         <div class="small" style="margin-top:6px;">
-          <span>0</span>
+          <span>最大応力</span>
           <span id="legendMax">— MPa</span>
         </div>
       </div>
@@ -342,7 +341,6 @@
 
     const el = (id)=>document.getElementById(id);
 
-    // UI
     const stlFile = el("stlFile");
     const unitSel = el("unit");
     const axisSel = el("axis");
@@ -385,7 +383,6 @@
       }
     });
 
-    // THREE
     const canvas = el("canvas");
     const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -399,7 +396,7 @@
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.enableZoom = false; // ✅ zoomは自前にする
+    controls.enableZoom = false;
 
     scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.1));
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -427,32 +424,29 @@
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
     }
-    resize();
-    animate();
-
+    resize(); animate();
     live.textContent = "（起動OK）";
 
-    // ✅ 超マイルドズーム（飛ばない）
+    // 超マイルドズーム
     canvas.addEventListener("wheel", (e)=>{
       e.preventDefault();
       const dy = Math.max(-120, Math.min(120, e.deltaY));
-      const k = 0.00035;            // さらに穏やか
+      const k = 0.00035;
       const scale = Math.exp(dy * k);
 
-      const dirVec = new THREE.Vector3().subVectors(camera.position, controls.target);
-      let dist = dirVec.length();
-      dist *= scale;
+      const v = new THREE.Vector3().subVectors(camera.position, controls.target);
+      let d = v.length();
+      d *= scale;
 
       const minD = (typeof controls.minDistance === "number") ? controls.minDistance : 0.05;
       const maxD = (typeof controls.maxDistance === "number") ? controls.maxDistance : 1000;
-      dist = Math.max(minD, Math.min(maxD, dist));
+      d = Math.max(minD, Math.min(maxD, d));
 
-      dirVec.normalize().multiplyScalar(dist);
-      camera.position.copy(controls.target).add(dirVec);
+      v.normalize().multiplyScalar(d);
+      camera.position.copy(controls.target).add(v);
       controls.update();
     }, { passive:false });
 
-    // Helpers
     function setStatusPill(text, cls=""){
       const pill = resultBox.querySelector(".pill");
       pill.textContent = text;
@@ -464,17 +458,17 @@
         rows[index].querySelector(".v").innerHTML = valueText;
       }
     }
-    function clamp01(x){
-      if(!Number.isFinite(x)) return 0;
-      return Math.max(0, Math.min(1, x));
-    }
     function nice(n, digits=3){
       if(!isFinite(n)) return "—";
       const p = Math.pow(10, digits);
       return (Math.round(n*p)/p).toString();
     }
+    function clamp01(x){
+      if(!Number.isFinite(x)) return 0;
+      return Math.max(0, Math.min(1, x));
+    }
 
-    function chooseAutoAxisFromBBoxSize(size){
+    function chooseAutoAxisFromSize(size){
       const abs = {x:size.x, y:size.y, z:size.z};
       let axis="x";
       if(abs.y>=abs.x && abs.y>=abs.z) axis="y";
@@ -482,10 +476,8 @@
       return axis;
     }
 
-    // ✅ モデルを中央へ（表示用）
     function centerAndFit(){
       if(!mesh) return;
-
       mesh.geometry.computeBoundingBox();
       const bbox = mesh.geometry.boundingBox;
       const size = new THREE.Vector3(); bbox.getSize(size);
@@ -509,7 +501,6 @@
       controls.update();
     }
 
-    // Beam physics (simply supported)
     function beamForces(L, load){
       if(load.type==="point"){
         const P = load.P;
@@ -534,7 +525,6 @@
 
       for(let i=0;i<n;i++){
         const t = clamp01(scalarArr[i]/denom);
-        // 青→赤
         colors[i*3+0] = t;
         colors[i*3+1] = 0.0;
         colors[i*3+2] = 1.0 - t;
@@ -543,12 +533,12 @@
       geometry.attributes.color.needsUpdate = true;
     }
 
-    function ensureMeshMaterialUsesVertexColors(){
+    function ensureVertexColorMaterial(){
       if(!mesh) return;
       mesh.material = new THREE.MeshStandardMaterial({
         vertexColors: true,
         roughness: 0.75,
-        metalness: 0.0,
+        metalness: 0.0
       });
     }
 
@@ -568,7 +558,6 @@
           mesh.geometry.dispose();
         }
 
-        // 単位は geometry に焼き込む
         const s = Number(unitSel.value || "0.001");
         geom.scale(s, s, s);
 
@@ -588,12 +577,11 @@
 
         const bbox = mesh.geometry.boundingBox;
         const size = new THREE.Vector3(); bbox.getSize(size);
-        const guessed = chooseAutoAxisFromBBoxSize(size).toUpperCase();
+        const guessed = chooseAutoAxisFromSize(size).toUpperCase();
 
         setKV(1, `${nice(Math.max(size.x,size.y,size.z),3)} m（長手推定：${guessed}）`);
         setKV(2, `${nice(size.x,3)} m × ${nice(size.y,3)} m × ${nice(size.z,3)} m`);
         legendMax.textContent = "— MPa";
-
       }catch(e){
         console.error(e);
         setStatusPill("STL読み込み失敗", "bad");
@@ -608,18 +596,17 @@
       }
 
       mesh.geometry.computeBoundingBox();
-      const bbox = mesh.geometry.boundingBox;     // ✅ geometryローカルで統一
+      const bbox = mesh.geometry.boundingBox;
       const size = new THREE.Vector3(); bbox.getSize(size);
 
       let beamAxis = axisSel.value;
-      if(beamAxis === "auto") beamAxis = chooseAutoAxisFromBBoxSize(size);
+      if(beamAxis === "auto") beamAxis = chooseAutoAxisFromSize(size);
 
-      // 長さ軸と残り2軸
+      const dim = {x:size.x, y:size.y, z:size.z};
       const axes = ["x","y","z"];
       const rest = axes.filter(a=>a!==beamAxis);
 
-      // 断面の「高さ」は残り2軸のうち大きい方、幅は小さい方
-      const dim = { x:size.x, y:size.y, z:size.z };
+      // 断面：高さhはrestの大きい方、幅bは小さい方
       let hAxis = rest[0], bAxis = rest[1];
       if(dim[rest[1]] > dim[rest[0]]){ hAxis = rest[1]; bAxis = rest[0]; }
 
@@ -632,16 +619,12 @@
         return;
       }
 
-      // 断面二次モーメント（矩形近似）
       const I = (b * Math.pow(h,3)) / 12.0;
       if(!Number.isFinite(I) || I <= 1e-18){
-        setStatusPill("断面が薄すぎて計算が不安定です（h/bを見直してください）", "bad");
+        setStatusPill("断面が薄すぎて計算が不安定です（軸指定を見直してください）", "bad");
         return;
       }
 
-      const allowPa = Number(allowBendMPa.value) * 1e6;
-
-      // 荷重
       const lt = loadType.value;
       let load = null;
       if(lt==="point"){
@@ -652,54 +635,46 @@
         const w = Number(loadMag.value);
         load = { type:"udl", w };
       }
+
       const {M, V} = beamForces(L, load);
 
-      // 軸ごとの min/center（ローカルbbox）
-      const minA = bbox.min[beamAxis];
-      const minH = bbox.min[hAxis];
-      const maxH = bbox.max[hAxis];
-      const midH = (minH + maxH) / 2;
-
-      // 色付け用スカラー： |M(x)| × |y|
-      // 応力は表示用に maxSigma を別で取る（報告値）
+      // 色：|M(x)|（頂点ごと）
       const pos = mesh.geometry.getAttribute("position");
       const count = pos.count;
 
+      const minA = bbox.min[beamAxis];
       const scalar = new Float32Array(count);
       let maxScalar = 0;
-      let maxSigma = 0;
 
       for(let i=0;i<count;i++){
-        const vx = pos.getX(i);
-        const vy = pos.getY(i);
-        const vz = pos.getZ(i);
-        const v = {x:vx, y:vy, z:vz};
-
+        const v = { x:pos.getX(i), y:pos.getY(i), z:pos.getZ(i) };
         const xLocal = v[beamAxis] - minA;
-        const yFromNeutral = v[hAxis] - midH;
-
-        const m = M(xLocal); // N*m
-
-        const sc = Math.abs(m) * Math.abs(yFromNeutral); // ✅薄板でも長さ方向に差が出る
+        const sc = Math.abs(M(xLocal));
         scalar[i] = sc;
         if(sc > maxScalar) maxScalar = sc;
+      }
 
-        const sigma = Math.abs((m * yFromNeutral) / I); // Pa
+      // 最大応力：|M|*(h/2)/I を長さ方向にサンプリング
+      const allowPa = Number(allowBendMPa.value) * 1e6;
+      const N = 240;
+      let maxSigma = 0;
+      for(let i=0;i<=N;i++){
+        const x = (L * i) / N;
+        const sigma = Math.abs(M(x)) * (h/2) / I;
         if(sigma > maxSigma) maxSigma = sigma;
       }
 
       updateVertexColorsFromScalar(mesh.geometry, scalar, maxScalar);
-      ensureMeshMaterialUsesVertexColors();
+      ensureVertexColorMaterial();
 
       const maxMPa = maxSigma / 1e6;
       const sf = (maxSigma > 0) ? (allowPa / maxSigma) : Infinity;
 
       setStatusPill("解析できました", sf >= 1 ? "good" : "bad");
-      setKV(1, `${nice(L,3)} m（梁軸：${beamAxis.toUpperCase()} / 高さ：${hAxis.toUpperCase()}）`);
+      setKV(1, `${nice(L,3)} m（梁軸：${beamAxis.toUpperCase()}）`);
       setKV(2, `${nice(b,3)} m × ${nice(h,3)} m（矩形近似）`);
       setKV(3, `${nice(maxMPa,3)} MPa`);
       setKV(4, isFinite(sf) ? `${nice(sf,3)}` : "—");
-
       legendMax.textContent = `${nice(maxMPa,3)} MPa`;
 
       // 接合（左右）判定：せん断力
@@ -732,7 +707,6 @@
       setKV(11, passAll ? `<span class="pill good">左右ともOK（全体OK）</span>` : `<span class="pill bad">どちらかNG（全体NG）</span>`);
     });
 
-    // Reset
     resetBtn.addEventListener("click", ()=>{
       if(mesh){
         if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
