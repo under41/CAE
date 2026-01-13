@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>木材 なんちゃってCAE（改良版）</title>
+  <title>木材 なんちゃってCAE（中学生向け）</title>
 
   <script type="importmap">
   {
@@ -59,9 +59,8 @@
     }
     .panel h2{ margin:10px 8px 8px; font-size:14px; color:#dbe3ff; }
     .note{
-      font-size:11px; color:rgba(233,238,252,0.72);
-      margin:6px 8px 10px; line-height:1.5;
-      background: rgba(122,162,255,0.1); padding:8px; border-radius:10px;
+      font-size:12px; color:rgba(233,238,252,0.72);
+      margin:6px 8px 10px; line-height:1.45;
     }
     .card{
       background: rgba(22,33,70,0.75);
@@ -82,7 +81,7 @@
       outline:none;
     }
     input[type="range"]{ width:100%; }
-    .hint{ font-size:11px; color:rgba(233,238,252,0.6); line-height:1.35; margin-top:6px; }
+    .hint{ font-size:12px; color:rgba(233,238,252,0.75); line-height:1.35; margin-top:6px; }
     .btns{ display:flex; gap:10px; margin:10px 6px 6px; }
     button{
       flex:1;
@@ -131,6 +130,7 @@
       border:1px solid rgba(255,255,255,0.10);
       background: #070b16;
       height: 100%;
+      min-height: 60vh;
     }
     #canvas{ width:100%; height:100%; display:block; }
     .legend{
@@ -139,7 +139,7 @@
       border:1px solid rgba(255,255,255,0.10);
       border-radius:14px;
       padding:10px 10px;
-      min-width: 240px;
+      min-width: 260px;
       backdrop-filter: blur(10px);
     }
     .legend .bar{
@@ -159,7 +159,7 @@
       border:1px solid rgba(255,255,255,0.10);
       border-radius:14px;
       padding:10px 12px;
-      max-width: 760px;
+      max-width: 780px;
       font-size:12px;
       color:rgba(233,238,252,0.88);
       backdrop-filter: blur(10px);
@@ -177,15 +177,17 @@
 <body>
   <header>
     <span class="badge">木材専用</span>
-    <h1>木材なんちゃってCAE（改良版）</h1>
-    <span class="badge">梁の曲げ近似解析</span>
+    <h1>なんちゃってCAE：STLを読み込んで「赤⇄青」で負荷を見える化</h1>
+    <span class="badge">梁の曲げ（近似）</span>
   </header>
 
   <div class="wrap">
     <aside class="panel">
       <div class="note">
-        <strong>💡 10mmの板が青くなる方へ：</strong><br/>
-        板の四隅にしか点がないSTLだと真ん中の色が塗れません。CAD側で「メッシュを細かく分割」して保存してください。
+        ✅ <b>L=最長辺</b>、<b>h=最短辺（厚み）</b>、<b>b=残り</b>で断面近似（10mm板が想定通り動く）<br/>
+        ✅ 色＝<b>σ(x)</b>（位置xだけで決める）→ STLが角しかなくても「全部青/全部赤」になりにくい<br/>
+        ✅ 数値は全角でもOK（自動変換）<br/>
+        ✅ 下の「デバッグ」に計算値を表示（原因が画面だけで分かる）
       </div>
 
       <h2>① STLを読み込む</h2>
@@ -202,12 +204,12 @@
             </select>
           </div>
           <div>
-            <label>長い方向（梁の軸）</label>
+            <label>梁の軸（長い方向）</label>
             <select id="axis">
-              <option value="auto" selected>自動判定</option>
-              <option value="x">X軸</option>
-              <option value="y">Y軸</option>
-              <option value="z">Z軸</option>
+              <option value="auto" selected>自動（最長辺）</option>
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z">Z</option>
             </select>
           </div>
         </div>
@@ -217,12 +219,12 @@
       <div class="card">
         <div class="row">
           <div>
-            <label>曲げ許容応力（MPa）</label>
-            <input id="allowBendMPa" type="number" value="20" min="1" step="1" />
+            <label>曲げの許容応力（MPa）</label>
+            <input id="allowBendMPa" type="text" value="20" />
           </div>
           <div>
-            <label>ヤング率E（GPa）</label>
-            <input id="E_GPa" type="number" value="10" min="1" step="0.5" />
+            <label>表示用：ヤング率E（GPa）</label>
+            <input id="E_GPa" type="text" value="10" />
           </div>
         </div>
       </div>
@@ -237,31 +239,53 @@
         <div class="row" style="margin-top:10px;">
           <div>
             <label id="loadMagLabel">重さ P（N）</label>
-            <input id="loadMag" type="number" value="100" min="0" step="1" />
+            <input id="loadMag" type="text" value="200" />
           </div>
           <div id="loadPosWrap">
             <label>位置（左→右）</label>
-            <input id="loadPos" type="range" min="0" max="100" value="50" />
+            <!-- 端はM=0になりやすいので最初から避ける -->
+            <input id="loadPos" type="range" min="1" max="99" value="50" />
             <div class="hint"><span id="loadPosTxt">50</span>%</div>
           </div>
         </div>
+        <div class="hint">※ 両端支持（単純支持）モデル。端に荷重を置くと青になりやすいです。</div>
       </div>
 
-      <h2>④ 接合（釘）の強度</h2>
+      <h2>④ 接合部（釘）の破壊判定（左右）</h2>
       <div class="card">
         <div class="row">
           <div>
+            <label>左の接合位置（左→右）</label>
+            <input id="jointPosL" type="range" min="0" max="100" value="10" />
+            <div class="hint"><span id="jointPosLTxt">10</span>%</div>
+          </div>
+          <div>
             <label>左：釘の本数</label>
-            <input id="nNailsL" type="number" value="2" min="1" />
+            <input id="nNailsL" type="text" value="2" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>右の接合位置（左→右）</label>
+            <input id="jointPosR" type="range" min="0" max="100" value="90" />
+            <div class="hint"><span id="jointPosRTxt">90</span>%</div>
           </div>
           <div>
             <label>右：釘の本数</label>
-            <input id="nNailsR" type="number" value="2" min="1" />
+            <input id="nNailsR" type="text" value="2" />
           </div>
         </div>
-        <div style="margin-top:10px;">
-          <label>釘1本の許容強度（N）</label>
-          <input id="allowNailN" type="number" value="80" min="1" />
+
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>釘1本の許容強度（N）</label>
+            <input id="allowNailN" type="text" value="80" />
+          </div>
+          <div>
+            <label>判定の考え方</label>
+            <input type="text" value="（その位置のせん断力）÷（釘本数） ≤ 許容" readonly />
+          </div>
         </div>
       </div>
 
@@ -271,28 +295,42 @@
       </div>
 
       <div class="result" id="resultBox">
-        <div class="kv"><div class="k">状態</div><div class="v"><span class="pill">未解析</span></div></div>
+        <div class="kv"><div class="k">状態</div><div class="v"><span class="pill">STL未読み込み</span></div></div>
         <div class="kv"><div class="k">梁の長さ L</div><div class="v">—</div></div>
-        <div class="kv"><div class="k">断面（幅b × 高さh）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">断面（b × h）</div><div class="v">—</div></div>
         <div class="kv"><div class="k">最大応力（MPa）</div><div class="v">—</div></div>
-        <div class="kv"><div class="k">安全率</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">安全率（許容/最大）</div><div class="v">—</div></div>
+
         <hr class="sep">
-        <div class="kv"><div class="k">接合判定</div><div class="v">—</div></div>
+
+        <div class="kv"><div class="k">左：せん断力 V（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">左：釘1本あたり（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">左：判定</div><div class="v">—</div></div>
+
+        <div class="kv"><div class="k">右：せん断力 V（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">右：釘1本あたり（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">右：判定</div><div class="v">—</div></div>
+
+        <div class="kv"><div class="k">接合（総合）</div><div class="v">—</div></div>
+
+        <hr class="sep">
+
+        <div class="kv"><div class="k">デバッグ（max|M|, maxσ）</div><div class="v" id="dbg">—</div></div>
       </div>
     </aside>
 
     <main class="view">
       <div class="toast">
-        操作：左ドラッグで回転 / 右ドラッグで移動 / ホイールでズーム（マイルド）<br/>
-        <span id="live">システム起動中...</span>
+        操作：回転＝左ドラッグ / 移動＝右ドラッグ（またはShift+左ドラッグ） / ズーム＝ホイール（超マイルド）<br/>
+        <span id="live">（起動チェック中…）</span>
       </div>
       <canvas id="canvas"></canvas>
       <div class="legend">
-        <div style="font-size:12px;color:rgba(233,238,252,0.85);">色：モーメント負荷（青→赤）</div>
+        <div style="font-size:12px;color:rgba(233,238,252,0.85);">色：σ(x)（青→赤）</div>
         <div class="bar"></div>
-        <div class="small"><span>負荷 小</span><span>負荷 最大</span></div>
+        <div class="small"><span>小（青）</span><span>大（赤）</span></div>
         <div class="small" style="margin-top:6px;">
-          <span>計算最大応力:</span>
+          <span>最大応力</span>
           <span id="legendMax">— MPa</span>
         </div>
       </div>
@@ -305,70 +343,272 @@
     import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
     const el = (id)=>document.getElementById(id);
+
+    // 全角→半角も吸収して数値化（NaN防止）
+    function num(v, fallback=0){
+      const s = String(v ?? "")
+        .replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0))
+        .replace(/[－−―]/g, "-")
+        .replace(/[．。]/g, ".")
+        .trim();
+      const x = parseFloat(s);
+      return Number.isFinite(x) ? x : fallback;
+    }
+
+    const stlFile = el("stlFile");
+    const unitSel = el("unit");
+    const axisSel = el("axis");
+
+    const allowBendMPa = el("allowBendMPa");
+    const loadType = el("loadType");
+    const loadMag = el("loadMag");
+    const loadMagLabel = el("loadMagLabel");
+    const loadPos = el("loadPos");
+    const loadPosTxt = el("loadPosTxt");
+    const loadPosWrap = el("loadPosWrap");
+
+    const jointPosL = el("jointPosL");
+    const jointPosLTxt = el("jointPosLTxt");
+    const nNailsL = el("nNailsL");
+
+    const jointPosR = el("jointPosR");
+    const jointPosRTxt = el("jointPosRTxt");
+    const nNailsR = el("nNailsR");
+
+    const allowNailN = el("allowNailN");
+
+    const analyzeBtn = el("analyzeBtn");
+    const resetBtn = el("resetBtn");
+    const resultBox = el("resultBox");
+    const legendMax = el("legendMax");
+    const live = el("live");
+    const dbg = el("dbg");
+
+    loadPos.addEventListener("input", ()=> loadPosTxt.textContent = loadPos.value);
+    jointPosL.addEventListener("input", ()=> jointPosLTxt.textContent = jointPosL.value);
+    jointPosR.addEventListener("input", ()=> jointPosRTxt.textContent = jointPosR.value);
+
+    loadType.addEventListener("change", ()=>{
+      if(loadType.value==="point"){
+        loadMagLabel.textContent = "重さ P（N）";
+        loadPosWrap.style.display = "";
+      }else{
+        loadMagLabel.textContent = "重さ w（N/m）";
+        loadPosWrap.style.display = "none";
+      }
+    });
+
     const canvas = el("canvas");
     const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x070b16, 5, 50);
+    scene.fog = new THREE.Fog(0x070b16, 5, 35);
 
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 2000);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.001, 2000);
     camera.position.set(3, 2, 4);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
-    controls.enableZoom = false; // 自前ズームを使うため
+    controls.dampingFactor = 0.08;
+    controls.enableZoom = false; // ズームは自前
 
-    scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.2));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight.position.set(5, 10, 5);
-    scene.add(dirLight);
+    scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.1));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(3, 5, 2);
+    scene.add(dir);
 
     const grid = new THREE.GridHelper(20, 20, 0x334477, 0x223355);
-    grid.position.y = -0.5;
+    grid.position.y = -0.8;
     scene.add(grid);
 
     let mesh = null;
 
-    // 自前マイルドズーム
-    canvas.addEventListener("wheel", (e)=>{
-      e.preventDefault();
-      const dy = Math.max(-120, Math.min(120, e.deltaY));
-      const scale = Math.exp(dy * 0.0004);
-      const v = new THREE.Vector3().subVectors(camera.position, controls.target);
-      v.multiplyScalar(scale);
-      camera.position.copy(controls.target).add(v);
-    }, { passive:false });
+    function resize(){
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(1, rect.width);
+      const h = Math.max(1, rect.height);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener("resize", resize);
 
     function animate(){
       controls.update();
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
     }
-    animate();
+    resize(); animate();
+    live.textContent = "（起動OK）";
 
-    function resize(){
-      const rect = canvas.getBoundingClientRect();
-      renderer.setSize(rect.width, rect.height, false);
-      camera.aspect = rect.width / rect.height;
-      camera.updateProjectionMatrix();
+    // 超マイルドズーム（さらに弱く）
+    canvas.addEventListener("wheel", (e)=>{
+      e.preventDefault();
+      const dy = Math.max(-60, Math.min(60, e.deltaY)); // clamp強め
+      const k = 0.00012; // ←かなり弱い
+      const scale = Math.exp(dy * k);
+
+      const v = new THREE.Vector3().subVectors(camera.position, controls.target);
+      let d = v.length();
+      d *= scale;
+
+      const minD = (typeof controls.minDistance === "number") ? controls.minDistance : 0.05;
+      const maxD = (typeof controls.maxDistance === "number") ? controls.maxDistance : 1000;
+      d = Math.max(minD, Math.min(maxD, d));
+
+      v.normalize().multiplyScalar(d);
+      camera.position.copy(controls.target).add(v);
+      controls.update();
+    }, { passive:false });
+
+    function setStatusPill(text, cls=""){
+      const pill = resultBox.querySelector(".pill");
+      pill.textContent = text;
+      pill.className = "pill" + (cls ? " " + cls : "");
     }
-    window.addEventListener("resize", resize);
-    resize();
-    el("live").textContent = "システム準備完了";
+    function setKV(index, valueText){
+      const rows = resultBox.querySelectorAll(".kv");
+      if(rows[index]){
+        rows[index].querySelector(".v").innerHTML = valueText;
+      }
+    }
+    function nice(n, digits=3){
+      if(!isFinite(n)) return "—";
+      const p = Math.pow(10, digits);
+      return (Math.round(n*p)/p).toString();
+    }
+    function clamp01(x){
+      if(!Number.isFinite(x)) return 0;
+      return Math.max(0, Math.min(1, x));
+    }
 
-    // 軸判定（一番長い辺を梁の長さ方向とする）
-    function chooseAutoAxis(size){
-      let axis = "x";
-      if(size.y > size.x && size.y > size.z) axis = "y";
-      if(size.z > size.x && size.z > size.y) axis = "z";
+    function chooseBeamAxis(size){
+      // auto: 最長辺
+      const abs = {x:size.x, y:size.y, z:size.z};
+      let axis="x";
+      if(abs.y>=abs.x && abs.y>=abs.z) axis="y";
+      if(abs.z>=abs.x && abs.z>=abs.y) axis="z";
       return axis;
     }
 
-    // 解析ロジック
-    el("analyzeBtn").addEventListener("click", ()=>{
+    function centerAndFit(){
+      if(!mesh) return;
+      mesh.geometry.computeBoundingBox();
+      const bbox = mesh.geometry.boundingBox;
+      const size = new THREE.Vector3(); bbox.getSize(size);
+      const center = new THREE.Vector3(); bbox.getCenter(center);
+
+      mesh.position.sub(center);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const dist = maxDim * 1.6 + 1;
+
+      camera.near = Math.max(0.001, maxDim / 1000);
+      camera.far  = maxDim * 200;
+      camera.updateProjectionMatrix();
+
+      camera.position.set(dist, dist*0.65, dist);
+      controls.target.set(0,0,0);
+
+      controls.minDistance = Math.max(0.05, maxDim * 0.35);
+      controls.maxDistance = maxDim * 30;
+
+      controls.update();
+    }
+
+    // 両端支持の梁
+    function beamForces(L, load){
+      if(load.type==="point"){
+        const P = load.P;
+        const a = load.a;
+        const R1 = P*(L-a)/L;
+        const V = (x)=> (x < a ? R1 : R1 - P);
+        const M = (x)=> (x < a ? R1*x : R1*x - P*(x-a));
+        return { M, V };
+      }else{
+        const w = load.w;
+        const R1 = w*L/2;
+        const V = (x)=> (R1 - w*x);
+        const M = (x)=> (R1*x - w*x*x/2);
+        return { M, V };
+      }
+    }
+
+    function updateVertexColorsFromScalar(geometry, scalarArr, maxScalar){
+      const n = scalarArr.length;
+      const colors = new Float32Array(n*3);
+      const denom = (maxScalar > 0 && Number.isFinite(maxScalar)) ? maxScalar : 1;
+
+      for(let i=0;i<n;i++){
+        const t = clamp01(scalarArr[i]/denom);
+        colors[i*3+0] = t;
+        colors[i*3+1] = 0.0;
+        colors[i*3+2] = 1.0 - t;
+      }
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geometry.attributes.color.needsUpdate = true;
+    }
+
+    function ensureVertexColorMaterial(){
+      if(!mesh) return;
+      mesh.material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.75,
+        metalness: 0.0
+      });
+    }
+
+    // STL Load
+    const loader = new STLLoader();
+    stlFile.addEventListener("change", async (ev)=>{
+      const file = ev.target.files?.[0];
+      if(!file) return;
+
+      setStatusPill("読み込み中…");
+      try{
+        const arrayBuffer = await file.arrayBuffer();
+        const geom = loader.parse(arrayBuffer);
+
+        if(mesh){
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+        }
+
+        const s = num(unitSel.value, 0.001);
+        geom.scale(s, s, s);
+
+        geom.computeVertexNormals();
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
+
+        mesh = new THREE.Mesh(
+          geom,
+          new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 })
+        );
+        scene.add(mesh);
+
+        centerAndFit();
+
+        setStatusPill("STL読み込みOK", "good");
+
+        const bbox = mesh.geometry.boundingBox;
+        const size = new THREE.Vector3(); bbox.getSize(size);
+        const guessed = chooseBeamAxis(size).toUpperCase();
+        setKV(1, `${nice(Math.max(size.x,size.y,size.z),3)} m（最長辺：${guessed}）`);
+        setKV(2, `${nice(size.x,3)} m × ${nice(size.y,3)} m × ${nice(size.z,3)} m`);
+        legendMax.textContent = "— MPa";
+        dbg.textContent = "—";
+      }catch(e){
+        console.error(e);
+        setStatusPill("STL読み込み失敗", "bad");
+      }
+    });
+
+    // Analyze
+    analyzeBtn.addEventListener("click", ()=>{
       if(!mesh){
-        alert("まずSTLファイルを読み込んでください");
+        setStatusPill("STLが必要です", "bad");
         return;
       }
 
@@ -376,112 +616,139 @@
       const bbox = mesh.geometry.boundingBox;
       const size = new THREE.Vector3(); bbox.getSize(size);
 
-      // 1. 梁の長さ方向を決める
-      let axis = el("axis").value;
-      if(axis === "auto") axis = chooseAutoAxis(size);
+      // 梁軸（長さL）
+      let beamAxis = axisSel.value;
+      if(beamAxis === "auto") beamAxis = chooseBeamAxis(size);
 
-      // 2. 断面寸法を決める（ここが重要！）
-      // 残りの2辺のうち、小さい方を「高さh（板の厚み）」、大きい方を「幅b」とする
-      const otherAxes = ["x","y","z"].filter(a => a !== axis);
-      let dim1 = size[otherAxes[0]], dim2 = size[otherAxes[1]];
-      let h = Math.min(dim1, dim2);
-      let b = Math.max(dim1, dim2);
-      let L = size[axis];
+      // h=最短辺（厚み）, b=残り（中間）
+      const dims = [
+        {a:"x", v:size.x},
+        {a:"y", v:size.y},
+        {a:"z", v:size.z},
+      ];
+      dims.sort((p,q)=>p.v-q.v);
+      const h = dims[0].v;                 // 最短（厚み）
+      const midAxis = dims[1].a;
+      const b = dims[1].v;                 // 中間（幅）
+      const longAxis = dims[2].a;
+      const L_auto = dims[2].v;            // 最長（長さ）
 
-      // 3. 荷重計算
-      const P = Number(el("loadMag").value);
-      const isPoint = el("loadType").value === "point";
-      let maxM = 0;
-      
-      if(isPoint){
-        const a = L * (Number(el("loadPos").value)/100);
-        maxM = (P * a * (L - a)) / L; // 単純支持梁の最大モーメント
-      } else {
-        maxM = (P * L * L) / 8; // 等分布荷重(PをN/mとした場合)の最大モーメント
+      const L = {x:size.x, y:size.y, z:size.z}[beamAxis];
+
+      if(L <= 0 || b <= 0 || h <= 0){
+        setStatusPill("寸法が不正です", "bad");
+        return;
       }
 
-      // 4. 応力計算 σ = M / (I/y) = M / Z
-      const I = (b * Math.pow(h, 3)) / 12;
-      const Z = I / (h / 2);
-      const maxSigmaPa = maxM / Z;
-      const maxMPa = maxSigmaPa / 1e6;
+      const I = (b * Math.pow(h,3)) / 12.0;
+      if(!Number.isFinite(I) || I <= 1e-18){
+        setStatusPill("断面が薄すぎて計算が不安定です", "bad");
+        return;
+      }
 
-      // 5. 色塗り（頂点ごとのモーメントを計算）
+      // 数値（全角でもOK）
+      const allowPa = num(allowBendMPa.value, 20) * 1e6;
+
+      const lt = loadType.value;
+      let load = null;
+      if(lt==="point"){
+        const P = num(loadMag.value, 200);
+        const a = L * (Number(loadPos.value)/100);
+        load = { type:"point", P, a };
+      }else{
+        const w = num(loadMag.value, 200);
+        load = { type:"udl", w };
+      }
+
+      const {M, V} = beamForces(L, load);
+
+      // 色：σ(x)=|M(x)|*(h/2)/I を各頂点のx位置で評価（頂点のyに依存しない）
       const pos = mesh.geometry.getAttribute("position");
-      const colors = new Float32Array(pos.count * 3);
-      const minVal = bbox.min[axis];
+      const count = pos.count;
 
-      // 頂点数が極端に少ない場合の警告
-      if(pos.count < 100) {
-        console.warn("頂点数が少ないため、グラデーションが正しく表示されない可能性があります。");
+      const minA = bbox.min[beamAxis];
+      const scalar = new Float32Array(count);
+
+      let maxScalar = 0;
+      let maxM = 0;
+
+      for(let i=0;i<count;i++){
+        const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+        const vtx = {x:vx, y:vy, z:vz};
+        const xLocal = vtx[beamAxis] - minA;
+
+        const m = Math.abs(M(xLocal));
+        if(m > maxM) maxM = m;
+
+        const sigma = m * (h/2) / I;  // Pa
+        scalar[i] = sigma;
+        if(sigma > maxScalar) maxScalar = sigma;
       }
 
-      for(let i=0; i<pos.count; i++){
-        const xLocal = pos.getComponent(i, ["x","y","z"].indexOf(axis)) - minVal;
-        let M_local = 0;
-        if(isPoint){
-          const a = L * (Number(el("loadPos").value)/100);
-          const R1 = P * (L - a) / L;
-          M_local = (xLocal < a) ? (R1 * xLocal) : (R1 * xLocal - P * (xLocal - a));
-        } else {
-          M_local = (P * L / 2) * xLocal - (P * xLocal * xLocal / 2);
-        }
-        
-        const t = Math.abs(M_local) / (maxM || 1); // 0〜1に正規化
-        colors[i*3+0] = t;       // R
-        colors[i*3+1] = 0.2;     // G
-        colors[i*3+2] = 1.0 - t; // B
+      // 最大応力は長さ方向をサンプルして安定計算
+      const N = 300;
+      let maxSigma = 0;
+      for(let i=0;i<=N;i++){
+        const x = (L * i) / N;
+        const sigma = Math.abs(M(x)) * (h/2) / I;
+        if(sigma > maxSigma) maxSigma = sigma;
       }
 
-      mesh.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-      mesh.material.vertexColors = true;
-      mesh.material.needsUpdate = true;
+      updateVertexColorsFromScalar(mesh.geometry, scalar, maxScalar);
+      ensureVertexColorMaterial();
 
-      // 結果表示
-      const allowPa = Number(el("allowBendMPa").value) * 1e6;
-      const sf = allowPa / maxSigmaPa;
-      
-      el("resultBox").querySelector(".pill").textContent = "解析完了";
-      el("resultBox").querySelector(".pill").className = (sf >= 1) ? "pill good" : "pill bad";
-      
-      const rows = el("resultBox").querySelectorAll(".v");
-      rows[1].textContent = `${L.toFixed(3)} m (軸: ${axis.toUpperCase()})`;
-      rows[2].textContent = `${b.toFixed(3)} m × ${h.toFixed(3)} m`;
-      rows[3].textContent = `${maxMPa.toFixed(3)} MPa`;
-      rows[4].textContent = sf.toFixed(2);
-      el("legendMax").textContent = `${maxMPa.toFixed(3)} MPa`;
+      const maxMPa = maxSigma / 1e6;
+      const sf = (maxSigma > 0) ? (allowPa / maxSigma) : Infinity;
+
+      setStatusPill("解析できました", sf >= 1 ? "good" : "bad");
+      setKV(1, `${nice(L,3)} m（梁軸：${beamAxis.toUpperCase()} / 最長=${longAxis.toUpperCase()}）`);
+      setKV(2, `${nice(b,3)} m × ${nice(h,3)} m（b=中間, h=最短=厚み）`);
+      setKV(3, `${nice(maxMPa,3)} MPa`);
+      setKV(4, isFinite(sf) ? `${nice(sf,3)}` : "—");
+      legendMax.textContent = `${nice(maxMPa,3)} MPa`;
+
+      dbg.textContent = `max|M|=${nice(maxM,3)} N·m / maxσ=${nice(maxMPa,3)} MPa`;
+
+      // 釘判定（左右）
+      const allowN = num(allowNailN.value, 80);
+
+      const xjL = L * (Number(jointPosL.value)/100);
+      const xjR = L * (Number(jointPosR.value)/100);
+
+      const VjL = Math.abs(V(xjL));
+      const VjR = Math.abs(V(xjR));
+
+      const nailsL = Math.max(1, Math.floor(num(nNailsL.value, 2)));
+      const nailsR = Math.max(1, Math.floor(num(nNailsR.value, 2)));
+
+      const perL = VjL / nailsL;
+      const perR = VjR / nailsR;
+
+      const passL = perL <= allowN;
+      const passR = perR <= allowN;
+      const passAll = passL && passR;
+
+      setKV(5, `${nice(VjL,3)} N`);
+      setKV(6, `${nice(perL,3)} N`);
+      setKV(7, passL ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
+
+      setKV(8, `${nice(VjR,3)} N`);
+      setKV(9, `${nice(perR,3)} N`);
+      setKV(10, passR ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
+
+      setKV(11, passAll ? `<span class="pill good">左右ともOK（全体OK）</span>` : `<span class="pill bad">どちらかNG（全体NG）</span>`);
     });
 
-    // ファイル読み込み
-    el("stlFile").addEventListener("change", async (ev)=>{
-      const file = ev.target.files[0];
-      if(!file) return;
-      const loader = new STLLoader();
-      const arrayBuffer = await file.arrayBuffer();
-      const geometry = loader.parse(arrayBuffer);
-      
-      const scale = Number(el("unit").value);
-      geometry.scale(scale, scale, scale);
-      geometry.computeVertexNormals();
-      geometry.center();
-
-      if(mesh) scene.remove(mesh);
-      mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness:0.8 }));
-      scene.add(mesh);
-
-      // カメラを合わせる
-      geometry.computeBoundingSphere();
-      const r = geometry.boundingSphere.radius;
-      camera.position.set(r*2, r*2, r*2);
-      controls.target.set(0,0,0);
+    resetBtn.addEventListener("click", ()=>{
+      if(mesh){
+        if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
+        mesh.material = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
+      }
+      setStatusPill("リセットしました", "info");
+      for(let i=1;i<=11;i++) setKV(i, "—");
+      legendMax.textContent = "— MPa";
+      dbg.textContent = "—";
     });
-
-    // リセット
-    el("resetBtn").addEventListener("click", ()=>{
-      location.reload();
-    });
-
-    el("loadPos").addEventListener("input", (e)=> el("loadPosTxt").textContent = e.target.value);
   </script>
 </body>
 </html>
