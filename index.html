@@ -4,6 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>木材 なんちゃってCAE（中学生向け）</title>
+
+  <!-- ✅ GitHub Pagesでも動く：importmap方式（裸import "three" を解決） -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
   <style>
     :root{
       --bg:#0b1020;
@@ -93,9 +104,8 @@
       color:var(--text);
       outline:none;
     }
-    input[type="range"]{
-      width:100%;
-    }
+    input[type="range"]{ width:100%; }
+
     .hint{
       font-size:12px;
       color:rgba(233,238,252,0.75);
@@ -118,9 +128,8 @@
       cursor:pointer;
     }
     button:hover{ background: rgba(122,162,255,0.28); }
-    button.secondary{
-      background: rgba(255,255,255,0.08);
-    }
+    button.secondary{ background: rgba(255,255,255,0.08); }
+
     .result{
       margin:8px 6px;
       padding:12px;
@@ -153,6 +162,8 @@
       overflow:hidden;
       border:1px solid rgba(255,255,255,0.10);
       background: #070b16;
+      height: 100%;
+      min-height: 60vh; /* ✅ 高さ0対策 */
     }
     #canvas{
       width:100%;
@@ -189,10 +200,11 @@
       border:1px solid rgba(255,255,255,0.10);
       border-radius:14px;
       padding:10px 12px;
-      max-width: 420px;
+      max-width: 520px;
       font-size:12px;
       color:rgba(233,238,252,0.88);
       backdrop-filter: blur(10px);
+      z-index: 5;
     }
     .note{
       font-size:12px;
@@ -247,7 +259,7 @@
         </div>
 
         <div class="hint">
-          ※ 色の変化が分かりやすいように、読み込み後は自動で中央に置きます。
+          ※ 読み込み後は自動で中央に置きます。
         </div>
       </div>
 
@@ -281,7 +293,7 @@
             <label id="loadMagLabel">重さ P（N）</label>
             <input id="loadMag" type="number" value="100" min="1" step="1" />
           </div>
-          <div>
+          <div id="loadPosWrap">
             <label>位置（左→右）</label>
             <input id="loadPos" type="range" min="0" max="100" value="50" />
             <div class="hint"><span id="loadPosTxt">50</span>%</div>
@@ -344,7 +356,8 @@
     <main class="view">
       <div class="toast" id="toast">
         ① STLを読み込む → ② 重さ・釘の条件 → 「解析する」<br/>
-        赤いほど負荷が大きい（危険寄り）、青いほど小さい（安全寄り）
+        赤いほど負荷が大きい（危険寄り）、青いほど小さい（安全寄り）<br/>
+        <span id="live">（起動チェック中…）</span>
       </div>
       <canvas id="canvas"></canvas>
       <div class="legend">
@@ -359,14 +372,14 @@
     </main>
   </div>
 
-  <!-- three.js (CDN) -->
   <script type="module">
-    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-    import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-    import { STLLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js";
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
-    // ---------- UI ----------
     const el = (id)=>document.getElementById(id);
+
+    // UI
     const stlFile = el("stlFile");
     const unitSel = el("unit");
     const axisSel = el("axis");
@@ -377,6 +390,7 @@
     const loadMagLabel = el("loadMagLabel");
     const loadPos = el("loadPos");
     const loadPosTxt = el("loadPosTxt");
+    const loadPosWrap = el("loadPosWrap");
 
     const jointPos = el("jointPos");
     const jointPosTxt = el("jointPosTxt");
@@ -385,9 +399,9 @@
 
     const analyzeBtn = el("analyzeBtn");
     const resetBtn = el("resetBtn");
-
     const resultBox = el("resultBox");
     const legendMax = el("legendMax");
+    const live = el("live");
 
     loadPos.addEventListener("input", ()=> loadPosTxt.textContent = loadPos.value);
     jointPos.addEventListener("input", ()=> jointPosTxt.textContent = jointPos.value);
@@ -395,19 +409,16 @@
     loadType.addEventListener("change", ()=>{
       if(loadType.value==="point"){
         loadMagLabel.textContent = "重さ P（N）";
-        loadPos.parentElement.style.display = "";
-        loadPosTxt.parentElement.style.display = "";
+        loadPosWrap.style.display = "";
       }else{
         loadMagLabel.textContent = "重さ w（N/m）";
-        // UDLでも位置は使わないが、UIとして残すと混乱するので隠す
-        loadPos.parentElement.style.display = "none";
-        loadPosTxt.parentElement.style.display = "none";
+        loadPosWrap.style.display = "none";
       }
     });
 
-    // ---------- THREE ----------
+    // THREE
     const canvas = el("canvas");
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
     const scene = new THREE.Scene();
@@ -419,8 +430,7 @@
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
 
-    const hemi = new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.1);
-    scene.add(hemi);
+    scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.1));
 
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
     dir.position.set(3, 5, 2);
@@ -431,12 +441,11 @@
     scene.add(grid);
 
     let mesh = null;
-    let geomOriginal = null;
 
     function resize(){
       const rect = canvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
+      const w = Math.max(1, rect.width);
+      const h = Math.max(1, rect.height);
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
@@ -451,14 +460,16 @@
     resize();
     animate();
 
-    // ---------- Helpers ----------
+    // 起動確認表示
+    live.textContent = "（起動OK：3D表示動作中）";
+
+    // Helpers
     function setStatusPill(text, cls=""){
       const pill = resultBox.querySelector(".pill");
       pill.textContent = text;
       pill.className = "pill" + (cls ? " " + cls : "");
     }
     function setKV(index, valueText){
-      // kvの順番は固定（0は状態）
       const rows = resultBox.querySelectorAll(".kv");
       if(rows[index]){
         rows[index].querySelector(".v").innerHTML = valueText;
@@ -466,20 +477,11 @@
     }
     function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
-    // 軸をXにそろえる回転（教育用に単純）
     function rotationToX(axis){
       const m = new THREE.Matrix4();
-      if(axis === "x") return m; // identity
-      if(axis === "y"){
-        // Y→X: Z軸まわりに -90°
-        m.makeRotationZ(-Math.PI/2);
-        return m;
-      }
-      if(axis === "z"){
-        // Z→X: Y軸まわりに +90°
-        m.makeRotationY(Math.PI/2);
-        return m;
-      }
+      if(axis === "x") return m;
+      if(axis === "y"){ m.makeRotationZ(-Math.PI/2); return m; }
+      if(axis === "z"){ m.makeRotationY(Math.PI/2); return m; }
       return m;
     }
 
@@ -499,14 +501,11 @@
       return (Math.round(n*p)/p).toString();
     }
 
-    // ---------- Beam physics (simply supported) ----------
     function beamForces(L, load){
-      // returns functions: M(x), V(x)
       if(load.type==="point"){
         const P = load.P;
-        const a = load.a; // from left
+        const a = load.a;
         const R1 = P*(L-a)/L;
-        // const R2 = P*a/L;
         const V = (x)=> (x < a ? R1 : R1 - P);
         const M = (x)=> (x < a ? R1*x : R1*x - P*(x-a));
         return { M, V };
@@ -525,7 +524,6 @@
       const denom = maxStress > 0 ? maxStress : 1;
       for(let i=0;i<n;i++){
         const t = clamp01(stressAbsArr[i]/denom);
-        // 青→赤（指定通り）
         const r = t;
         const g = 0.0;
         const b = 1.0 - t;
@@ -553,7 +551,6 @@
       const center = new THREE.Vector3(); bbox.getCenter(center);
       mesh.position.sub(center);
 
-      // camera fit
       const maxDim = Math.max(size.x, size.y, size.z);
       const dist = maxDim * 1.6 + 1;
       camera.position.set(dist, dist*0.65, dist);
@@ -561,73 +558,67 @@
       controls.update();
     }
 
-    // ---------- Load STL ----------
+    // STL Load
     const loader = new STLLoader();
     stlFile.addEventListener("change", async (ev)=>{
       const file = ev.target.files?.[0];
       if(!file) return;
 
       setStatusPill("読み込み中…");
-      const arrayBuffer = await file.arrayBuffer();
-      const geom = loader.parse(arrayBuffer);
+      try{
+        const arrayBuffer = await file.arrayBuffer();
+        const geom = loader.parse(arrayBuffer);
 
-      // keep original (for reset)
-      geomOriginal = geom.clone();
+        if(mesh){
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+        }
 
-      // remove old mesh
-      if(mesh){
-        scene.remove(mesh);
-        mesh.geometry.dispose();
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
+        mesh = new THREE.Mesh(geom, mat);
+        scene.add(mesh);
+
+        // scale
+        const s = Number(unitSel.value || "0.001");
+        mesh.scale.setScalar(s);
+
+        // axis rotate
+        const bbox0 = new THREE.Box3().setFromObject(mesh);
+        let axis = axisSel.value;
+        if(axis === "auto") axis = chooseAutoAxisFromBBox(bbox0);
+        const rot = rotationToX(axis);
+        mesh.geometry.applyMatrix4(rot);
+
+        mesh.geometry.computeVertexNormals();
+        mesh.geometry.computeBoundingBox();
+        mesh.geometry.computeBoundingSphere();
+
+        centerAndFit();
+
+        setStatusPill("STL読み込みOK", "good");
+
+        const bbox = new THREE.Box3().setFromObject(mesh);
+        const size = new THREE.Vector3(); bbox.getSize(size);
+        setKV(1, `${nice(size.x,3)} m`);
+        setKV(2, `${nice(size.z,3)} m × ${nice(size.y,3)} m`);
+
+        if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
+        mesh.material = mat;
+
+        legendMax.textContent = "— MPa";
+      }catch(e){
+        console.error(e);
+        setStatusPill("STL読み込み失敗", "bad");
       }
-
-      // default material (color later)
-      const mat = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
-      mesh = new THREE.Mesh(geom, mat);
-      scene.add(mesh);
-
-      // scale by unit (mm->m etc)
-      const s = Number(unitSel.value || "0.001");
-      mesh.scale.setScalar(s);
-
-      // apply axis->X rotation to geometry itself (so analysis is easier)
-      // First: decide axis (auto uses original bbox)
-      const bbox0 = new THREE.Box3().setFromObject(mesh);
-      let axis = axisSel.value;
-      if(axis === "auto") axis = chooseAutoAxisFromBBox(bbox0);
-
-      const rot = rotationToX(axis);
-      mesh.geometry.applyMatrix4(rot);
-
-      // recalc normals & bbox
-      mesh.geometry.computeVertexNormals();
-      mesh.geometry.computeBoundingBox();
-      mesh.geometry.computeBoundingSphere();
-
-      centerAndFit();
-
-      setStatusPill("STL読み込みOK", "good");
-      // show basic dims
-      const bbox = new THREE.Box3().setFromObject(mesh);
-      const size = new THREE.Vector3(); bbox.getSize(size);
-      setKV(1, `${nice(size.x,3)} m`);
-      setKV(2, `${nice(size.z,3)} m × ${nice(size.y,3)} m`);
-
-      // reset colors to neutral
-      if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
-      mesh.material = mat;
-
-      legendMax.textContent = "— MPa";
     });
 
-    // ---------- Analyze ----------
+    // Analyze
     analyzeBtn.addEventListener("click", ()=>{
       if(!mesh){
         setStatusPill("STLが必要です", "bad");
         return;
       }
 
-      // Ensure X-axis beam coordinates
-      // (already rotated on load; if axis setting changed after load, user should reload)
       const bbox = new THREE.Box3().setFromObject(mesh);
       const size = new THREE.Vector3(); bbox.getSize(size);
 
@@ -640,11 +631,9 @@
         return;
       }
 
-      // Rectangular section approximation
       const I = (b * Math.pow(h,3)) / 12.0;
       const y0 = (bbox.min.y + bbox.max.y)/2;
 
-      // Load
       const lt = loadType.value;
       let load = null;
       if(lt==="point"){
@@ -657,37 +646,29 @@
       }
       const {M, V} = beamForces(L, load);
 
-      // Allowable
-      const allowPa = Number(allowBendMPa.value) * 1e6; // MPa -> Pa
+      const allowPa = Number(allowBendMPa.value) * 1e6;
 
-      // Vertex stress
       const pos = mesh.geometry.getAttribute("position");
       const count = pos.count;
       const stressAbs = new Float32Array(count);
       let maxSigma = 0;
 
       for(let i=0;i<count;i++){
-        const x = pos.getX(i) + mesh.position.x; // mesh is centered, but bbox is from object: position already used
+        const x = pos.getX(i) + mesh.position.x;
         const y = pos.getY(i) + mesh.position.y;
-
-        // Convert x into left-to-right coordinate in [0,L]
-        // We need x0 = bbox.min.x in object space:
-        // Compute xLocal = (x - bbox.min.x)
         const xLocal = x - bbox.min.x;
 
-        const m = M(xLocal);               // N*m
-        const sigma = (m * (y - y0)) / I;  // Pa (N/m^2)
+        const m = M(xLocal);
+        const sigma = (m * (y - y0)) / I;
         const sAbs = Math.abs(sigma);
 
         stressAbs[i] = sAbs;
         if(sAbs > maxSigma) maxSigma = sAbs;
       }
 
-      // Color map
       updateVertexColorsFromStress(mesh.geometry, stressAbs, maxSigma);
       ensureMeshMaterialUsesVertexColors();
 
-      // Results
       const maxMPa = maxSigma / 1e6;
       const sf = (maxSigma > 0) ? (allowPa / maxSigma) : Infinity;
 
@@ -699,25 +680,21 @@
 
       legendMax.textContent = `${nice(maxMPa,3)} MPa`;
 
-      // Joint / nails check (shear)
       const xj = L * (Number(jointPos.value)/100);
-      const Vj = Math.abs(V(xj)); // N
+      const Vj = Math.abs(V(xj));
       const nails = Math.max(1, Math.floor(Number(nNails.value)));
       const per = Vj / nails;
       const allowN = Number(allowNailN.value);
-
       const pass = per <= allowN;
 
       setKV(5, `${nice(Vj,3)} N`);
       setKV(6, `${nice(per,3)} N`);
       setKV(7, pass ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
-
     });
 
-    // ---------- Reset ----------
+    // Reset
     resetBtn.addEventListener("click", ()=>{
       if(mesh){
-        // reset colors
         if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
         mesh.material = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
       }
