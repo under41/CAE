@@ -24,6 +24,7 @@
       --muted:#aab6dd;
       --bad:#ff4d4d;
       --good:#4dffb5;
+      --accent:#7aa2ff;
     }
     *{box-sizing:border-box}
     body{
@@ -75,6 +76,12 @@
       margin:10px 8px 8px;
       font-size:14px;
       color:#dbe3ff;
+    }
+    .note{
+      font-size:12px;
+      color:rgba(233,238,252,0.72);
+      margin:6px 8px 10px;
+      line-height:1.45;
     }
     .card{
       background: rgba(22,33,70,0.75);
@@ -154,6 +161,7 @@
     }
     .pill.good{ border-color: rgba(77,255,181,0.35); color: var(--good); }
     .pill.bad{ border-color: rgba(255,77,77,0.45); color: var(--bad); }
+    .pill.info{ border-color: rgba(122,162,255,0.35); color: var(--accent); }
 
     .view{
       position:relative;
@@ -199,17 +207,18 @@
       border:1px solid rgba(255,255,255,0.10);
       border-radius:14px;
       padding:10px 12px;
-      max-width: 560px;
+      max-width: 620px;
       font-size:12px;
       color:rgba(233,238,252,0.88);
       backdrop-filter: blur(10px);
       z-index: 5;
-    }
-    .note{
-      font-size:12px;
-      color:rgba(233,238,252,0.70);
-      margin:6px 8px 10px;
       line-height:1.45;
+    }
+
+    hr.sep{
+      border:none;
+      border-top:1px solid rgba(255,255,255,0.08);
+      margin:10px 0;
     }
 
     @media (max-width: 980px){
@@ -228,8 +237,8 @@
   <div class="wrap">
     <aside class="panel">
       <div class="note">
-        これは「本格CAE」ではなく、STLの外形から梁を近似して計算します。<br/>
-        でも<strong>直感UI</strong>で「どこが危ないか（赤）」と「釘が耐えるか」を学べる教材用です。
+        ✅ 接合（釘）を <strong>左右2か所</strong> 設定できる版です。<br/>
+        ✅ ズームは<strong>思い切って激弱</strong>に変更（ホイールで飛ばない）
       </div>
 
       <h2>① STLを読み込む</h2>
@@ -247,18 +256,18 @@
             </select>
           </div>
           <div>
-            <label>梁の向き（表示は回転しません）</label>
+            <label>長い方向（解析に使う軸）</label>
             <select id="axis">
-              <option value="auto" selected>自動（解析で長手方向を推定）</option>
-              <option value="x">X（解析でXを長手にみなす）</option>
-              <option value="y">Y（解析でYを長手にみなす）</option>
-              <option value="z">Z（解析でZを長手にみなす）</option>
+              <option value="auto" selected>自動（いちばん長い方向）</option>
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z">Z</option>
             </select>
           </div>
         </div>
 
         <div class="hint">
-          ※ この版は<strong>表示の向きは元のSTLのまま</strong>です。解析だけで「長手方向」を決めます。
+          ※ 表示は回転しません。解析のときだけ「長い方向」を使って計算します。
         </div>
       </div>
 
@@ -297,21 +306,33 @@
         </div>
 
         <div class="hint">
-          端は「両端支持（単純支持）」として計算します（中学生向けの基本モデル）。
+          端は「両端支持（単純支持）」として計算します（教材向けモデル）。
         </div>
       </div>
 
-      <h2>④ 接合部（釘）の破壊判定</h2>
+      <h2>④ 接合部（釘）の破壊判定（左右）</h2>
       <div class="card">
         <div class="row">
           <div>
-            <label>接合位置（左→右）</label>
-            <input id="jointPos" type="range" min="0" max="100" value="10" />
-            <div class="hint"><span id="jointPosTxt">10</span>%</div>
+            <label>左の接合位置（左→右）</label>
+            <input id="jointPosL" type="range" min="0" max="100" value="10" />
+            <div class="hint"><span id="jointPosLTxt">10</span>%</div>
           </div>
           <div>
-            <label>釘の本数</label>
-            <input id="nNails" type="number" value="4" min="1" step="1" />
+            <label>左：釘の本数</label>
+            <input id="nNailsL" type="number" value="2" min="1" step="1" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>右の接合位置（左→右）</label>
+            <input id="jointPosR" type="range" min="0" max="100" value="90" />
+            <div class="hint"><span id="jointPosRTxt">90</span>%</div>
+          </div>
+          <div>
+            <label>右：釘の本数</label>
+            <input id="nNailsR" type="number" value="2" min="1" step="1" />
           </div>
         </div>
 
@@ -322,8 +343,12 @@
           </div>
           <div>
             <label>判定の考え方</label>
-            <input type="text" value="せん断力 ÷ 本数 ≤ 許容" readonly />
+            <input type="text" value="（その位置のせん断力）÷（釘本数） ≤ 許容" readonly />
           </div>
+        </div>
+
+        <div class="hint">
+          左右それぞれで判定します（どちらかがNGなら全体NG）。
         </div>
       </div>
 
@@ -338,16 +363,25 @@
         <div class="kv"><div class="k">断面（幅b × 高さh）</div><div class="v">—</div></div>
         <div class="kv"><div class="k">最大応力（MPa）</div><div class="v">—</div></div>
         <div class="kv"><div class="k">安全率（許容/最大）</div><div class="v">—</div></div>
-        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08); margin:10px 0;">
-        <div class="kv"><div class="k">接合部のせん断力 V（N）</div><div class="v">—</div></div>
-        <div class="kv"><div class="k">釘1本あたり（N）</div><div class="v">—</div></div>
-        <div class="kv"><div class="k">釘の判定</div><div class="v">—</div></div>
+
+        <hr class="sep">
+
+        <div class="kv"><div class="k">左：せん断力 V（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">左：釘1本あたり（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">左：判定</div><div class="v">—</div></div>
+
+        <div class="kv"><div class="k">右：せん断力 V（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">右：釘1本あたり（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">右：判定</div><div class="v">—</div></div>
+
+        <div class="kv"><div class="k">接合（総合）</div><div class="v">—</div></div>
       </div>
     </aside>
 
     <main class="view">
       <div class="toast">
-        操作：<strong>ズーム＝ホイール</strong> / 回転＝左ドラッグ / 平行移動＝右ドラッグ（またはShift+左ドラッグ）<br/>
+        操作：回転＝左ドラッグ / 移動＝右ドラッグ（またはShift+左ドラッグ）<br/>
+        ✅ ズーム：ホイール（超マイルド・飛ばない設定）<br/>
         <span id="live">（起動チェック中…）</span>
       </div>
       <canvas id="canvas"></canvas>
@@ -383,9 +417,14 @@
     const loadPosTxt = el("loadPosTxt");
     const loadPosWrap = el("loadPosWrap");
 
-    const jointPos = el("jointPos");
-    const jointPosTxt = el("jointPosTxt");
-    const nNails = el("nNails");
+    const jointPosL = el("jointPosL");
+    const jointPosLTxt = el("jointPosLTxt");
+    const nNailsL = el("nNailsL");
+
+    const jointPosR = el("jointPosR");
+    const jointPosRTxt = el("jointPosRTxt");
+    const nNailsR = el("nNailsR");
+
     const allowNailN = el("allowNailN");
 
     const analyzeBtn = el("analyzeBtn");
@@ -395,7 +434,8 @@
     const live = el("live");
 
     loadPos.addEventListener("input", ()=> loadPosTxt.textContent = loadPos.value);
-    jointPos.addEventListener("input", ()=> jointPosTxt.textContent = jointPos.value);
+    jointPosL.addEventListener("input", ()=> jointPosLTxt.textContent = jointPosL.value);
+    jointPosR.addEventListener("input", ()=> jointPosRTxt.textContent = jointPosR.value);
 
     loadType.addEventListener("change", ()=>{
       if(loadType.value==="point"){
@@ -422,11 +462,10 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
 
-    // ✅ ズームが飛びすぎないように調整（小さいほど細かい）
-    controls.zoomSpeed = 0.08;
+    // ✅ 重要：OrbitControlsのズームはOFF（飛びの元になるため）
+    controls.enableZoom = false;
 
     scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.1));
-
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
     dir.position.set(3, 5, 2);
     scene.add(dir);
@@ -457,6 +496,33 @@
 
     live.textContent = "（起動OK）";
 
+    // ✅ 超マイルドズーム（ホイールのdeltaを強く抑える）
+    // - deltaYをクランプ
+    // - 距離を指数でほんの少しずつ変える
+    // - min/maxDistance で必ず止める
+    canvas.addEventListener("wheel", (e)=>{
+      e.preventDefault();
+
+      // trackpadでも暴れないように強めに抑制
+      const dy = Math.max(-120, Math.min(120, e.deltaY));
+      const k = 0.0004;               // ←小さいほどズームが穏やか（思い切って小さく）
+      const scale = Math.exp(dy * k);  // dy>0: zoom out（距離増）, dy<0: zoom in（距離減）
+
+      const dirVec = new THREE.Vector3().subVectors(camera.position, controls.target);
+      let dist = dirVec.length();
+
+      dist *= scale;
+
+      const minD = (typeof controls.minDistance === "number") ? controls.minDistance : 0.05;
+      const maxD = (typeof controls.maxDistance === "number") ? controls.maxDistance : 1000;
+
+      dist = Math.max(minD, Math.min(maxD, dist));
+
+      dirVec.normalize().multiplyScalar(dist);
+      camera.position.copy(controls.target).add(dirVec);
+      controls.update();
+    }, { passive:false });
+
     // Helpers
     function setStatusPill(text, cls=""){
       const pill = resultBox.querySelector(".pill");
@@ -477,7 +543,43 @@
       return (Math.round(n*p)/p).toString();
     }
 
-    // 梁計算（単純支持）
+    function chooseAutoAxisFromBBox(bbox){
+      const size = new THREE.Vector3();
+      bbox.getSize(size);
+      const abs = {x:size.x, y:size.y, z:size.z};
+      let axis="x";
+      if(abs.y>=abs.x && abs.y>=abs.z) axis="y";
+      if(abs.z>=abs.x && abs.z>=abs.y) axis="z";
+      return axis;
+    }
+
+    // ✅ カメラ・ズーム範囲をモデルサイズから自動設定（飛び防止）
+    function centerAndFit(){
+      if(!mesh) return;
+
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const size = new THREE.Vector3(); bbox.getSize(size);
+      const center = new THREE.Vector3(); bbox.getCenter(center);
+
+      mesh.position.sub(center);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const dist = maxDim * 1.6 + 1;
+
+      camera.near = Math.max(0.001, maxDim / 1000);
+      camera.far  = maxDim * 200;
+      camera.updateProjectionMatrix();
+
+      camera.position.set(dist, dist*0.65, dist);
+      controls.target.set(0,0,0);
+
+      controls.minDistance = Math.max(0.05, maxDim * 0.30);
+      controls.maxDistance = maxDim * 25;
+
+      controls.update();
+    }
+
+    // Beam physics (simply supported)
     function beamForces(L, load){
       if(load.type==="point"){
         const P = load.P;
@@ -501,7 +603,6 @@
       const denom = maxStress > 0 ? maxStress : 1;
       for(let i=0;i<n;i++){
         const t = clamp01(stressAbsArr[i]/denom);
-        // 青→赤
         colors[i*3+0] = t;
         colors[i*3+1] = 0.0;
         colors[i*3+2] = 1.0 - t;
@@ -517,41 +618,6 @@
         roughness: 0.75,
         metalness: 0.0,
       });
-    }
-
-    // ✅ ここでカメラ・ズーム範囲をモデルサイズから自動設定（飛び防止）
-    function centerAndFit(){
-      if(!mesh) return;
-
-      const bbox = new THREE.Box3().setFromObject(mesh);
-      const size = new THREE.Vector3(); bbox.getSize(size);
-      const center = new THREE.Vector3(); bbox.getCenter(center);
-
-      mesh.position.sub(center);
-
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const dist = maxDim * 1.6 + 1;
-
-      camera.near = Math.max(0.001, maxDim / 1000);
-      camera.far  = maxDim * 200;
-      camera.updateProjectionMatrix();
-
-      camera.position.set(dist, dist*0.65, dist);
-      controls.target.set(0,0,0);
-
-      controls.minDistance = Math.max(0.05, maxDim * 0.25);
-      controls.maxDistance = maxDim * 20;
-
-      controls.update();
-    }
-
-    function chooseAutoAxisFromBBoxSize(size){
-      // 長い方向を beam axis にする（表示は回転しない）
-      const abs = {x:size.x, y:size.y, z:size.z};
-      let axis="x";
-      if(abs.y>=abs.x && abs.y>=abs.z) axis="y";
-      if(abs.z>=abs.x && abs.z>=abs.y) axis="z";
-      return axis;
     }
 
     // STL Load
@@ -570,20 +636,19 @@
           mesh.geometry.dispose();
         }
 
+        // ✅ 単位は geometry に焼き込む（安定）
+        const s = Number(unitSel.value || "0.001");
+        geom.scale(s, s, s);
+
+        geom.computeVertexNormals();
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
+
         mesh = new THREE.Mesh(
           geom,
           new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 })
         );
         scene.add(mesh);
-
-        // ✅ 単位スケールは geometry に焼き込む（計算・表示が安定）
-        const s = Number(unitSel.value || "0.001");
-        mesh.geometry.scale(s, s, s);
-        mesh.scale.set(1,1,1);
-
-        mesh.geometry.computeVertexNormals();
-        mesh.geometry.computeBoundingBox();
-        mesh.geometry.computeBoundingSphere();
 
         centerAndFit();
 
@@ -592,13 +657,11 @@
         const bbox = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3(); bbox.getSize(size);
 
-        // ここは「推定結果」を表示（解析に使う）
-        const guessed = chooseAutoAxisFromBBoxSize(size);
-        setKV(1, `${nice(Math.max(size.x,size.y,size.z),3)} m（長手推定：${guessed.toUpperCase()}）`);
+        const guessed = chooseAutoAxisFromBBox(bbox).toUpperCase();
+        setKV(1, `${nice(Math.max(size.x,size.y,size.z),3)} m（長手推定：${guessed}）`);
         setKV(2, `${nice(size.x,3)} m × ${nice(size.y,3)} m × ${nice(size.z,3)} m`);
-
-        if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
         legendMax.textContent = "— MPa";
+
       }catch(e){
         console.error(e);
         setStatusPill("STL読み込み失敗", "bad");
@@ -615,19 +678,14 @@
       const bbox = new THREE.Box3().setFromObject(mesh);
       const size = new THREE.Vector3(); bbox.getSize(size);
 
-      // ✅ 解析用の梁軸（表示は回転しない）
-      let beamAxis = axisSel.value;
-      if(beamAxis === "auto") beamAxis = chooseAutoAxisFromBBoxSize(size);
+      let axis = axisSel.value;
+      if(axis === "auto") axis = chooseAutoAxisFromBBox(bbox);
 
-      // beamAxisに応じて「長さL」と「断面(b,h)」を決める（矩形近似）
-      let L, b, h;
-      if(beamAxis === "x"){
-        L = size.x; b = size.z; h = size.y;
-      }else if(beamAxis === "y"){
-        L = size.y; b = size.z; h = size.x;
-      }else{ // "z"
-        L = size.z; b = size.x; h = size.y;
-      }
+      // L（長さ）, h（高さ）, b（幅）を axis に応じて決める（矩形断面近似）
+      let L, h, b;
+      if(axis === "x"){ L=size.x; h=size.y; b=size.z; }
+      else if(axis === "y"){ L=size.y; h=size.z; b=size.x; }
+      else { L=size.z; h=size.y; b=size.x; }
 
       if(L <= 0 || h <= 0 || b <= 0){
         setStatusPill("形状が小さすぎるか不正です", "bad");
@@ -637,6 +695,7 @@
       const I = (b * Math.pow(h,3)) / 12.0;
       const allowPa = Number(allowBendMPa.value) * 1e6;
 
+      // load
       const lt = loadType.value;
       let load = null;
       if(lt==="point"){
@@ -649,42 +708,36 @@
       }
       const {M, V} = beamForces(L, load);
 
-      // 応力：頂点ごとに色付け
+      // 応力（頂点ごと）
       const pos = mesh.geometry.getAttribute("position");
       const count = pos.count;
+
+      // 中立軸（高さ方向）
+      let yMin, yMax, aMin;
+      if(axis === "x"){ yMin=bbox.min.y; yMax=bbox.max.y; aMin=bbox.min.x; }
+      else if(axis === "y"){ yMin=bbox.min.z; yMax=bbox.max.z; aMin=bbox.min.y; }
+      else { yMin=bbox.min.y; yMax=bbox.max.y; aMin=bbox.min.z; }
+
+      const y0 = (yMin + yMax)/2;
+
       const stressAbs = new Float32Array(count);
       let maxSigma = 0;
 
-      // beamAxisに応じて「xLocal」と「断面のy（中立軸からの距離）」を取り出す
-      // ここは“教材用の簡易”として、断面方向は1軸で扱う
-      let minA, maxA, midB;
-      if(beamAxis === "x"){
-        minA = bbox.min.x; maxA = bbox.max.x; midB = (bbox.min.y + bbox.max.y)/2; // yが曲げ方向
-      }else if(beamAxis === "y"){
-        minA = bbox.min.y; maxA = bbox.max.y; midB = (bbox.min.x + bbox.max.x)/2; // xが曲げ方向
-      }else{
-        minA = bbox.min.z; maxA = bbox.max.z; midB = (bbox.min.y + bbox.max.y)/2; // yが曲げ方向
-      }
-
       for(let i=0;i<count;i++){
-        const vx = pos.getX(i) + mesh.position.x;
-        const vy = pos.getY(i) + mesh.position.y;
-        const vz = pos.getZ(i) + mesh.position.z;
-
-        let xLocal, yFromNeutral;
-        if(beamAxis === "x"){
-          xLocal = vx - minA;
-          yFromNeutral = (vy - midB);
-        }else if(beamAxis === "y"){
-          xLocal = vy - minA;
-          yFromNeutral = (vx - midB);
+        let xLocal, y;
+        if(axis === "x"){
+          xLocal = pos.getX(i) - aMin;
+          y = pos.getY(i);
+        }else if(axis === "y"){
+          xLocal = pos.getY(i) - aMin;
+          y = pos.getZ(i);
         }else{
-          xLocal = vz - minA;
-          yFromNeutral = (vy - midB);
+          xLocal = pos.getZ(i) - aMin;
+          y = pos.getY(i);
         }
 
-        const m = M(xLocal);           // N*m
-        const sigma = (m * yFromNeutral) / I;  // Pa
+        const m = M(xLocal);               // N*m
+        const sigma = (m * (y - y0)) / I;  // Pa
         const sAbs = Math.abs(sigma);
 
         stressAbs[i] = sAbs;
@@ -698,23 +751,41 @@
       const sf = (maxSigma > 0) ? (allowPa / maxSigma) : Infinity;
 
       setStatusPill("解析できました", sf >= 1 ? "good" : "bad");
-      setKV(1, `${nice(L,3)} m（梁軸：${beamAxis.toUpperCase()}）`);
-      setKV(2, `${nice(b,3)} m × ${nice(h,3)} m（断面近似）`);
+      setKV(1, `${nice(L,3)} m（解析の長さ / 梁軸：${axis.toUpperCase()}）`);
+      setKV(2, `${nice(b,3)} m × ${nice(h,3)} m（矩形近似）`);
       setKV(3, `${nice(maxMPa,3)} MPa`);
       setKV(4, isFinite(sf) ? `${nice(sf,3)}` : "—");
+
       legendMax.textContent = `${nice(maxMPa,3)} MPa`;
 
-      // 釘判定（せん断力）
-      const xj = L * (Number(jointPos.value)/100);
-      const Vj = Math.abs(V(xj));
-      const nails = Math.max(1, Math.floor(Number(nNails.value)));
-      const per = Vj / nails;
+      // ✅ 接合（左右）判定：せん断力Vを左右それぞれ計算
       const allowN = Number(allowNailN.value);
-      const pass = per <= allowN;
 
-      setKV(5, `${nice(Vj,3)} N`);
-      setKV(6, `${nice(per,3)} N`);
-      setKV(7, pass ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
+      const xjL = L * (Number(jointPosL.value)/100);
+      const xjR = L * (Number(jointPosR.value)/100);
+
+      const VjL = Math.abs(V(xjL));
+      const VjR = Math.abs(V(xjR));
+
+      const nailsL = Math.max(1, Math.floor(Number(nNailsL.value)));
+      const nailsR = Math.max(1, Math.floor(Number(nNailsR.value)));
+
+      const perL = VjL / nailsL;
+      const perR = VjR / nailsR;
+
+      const passL = perL <= allowN;
+      const passR = perR <= allowN;
+      const passAll = passL && passR;
+
+      setKV(5, `${nice(VjL,3)} N`);
+      setKV(6, `${nice(perL,3)} N`);
+      setKV(7, passL ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
+
+      setKV(8, `${nice(VjR,3)} N`);
+      setKV(9, `${nice(perR,3)} N`);
+      setKV(10, passR ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
+
+      setKV(11, passAll ? `<span class="pill good">左右ともOK（全体OK）</span>` : `<span class="pill bad">どちらかNG（全体NG）</span>`);
     });
 
     // Reset
@@ -723,14 +794,9 @@
         if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
         mesh.material = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
       }
-      setStatusPill("リセットしました");
-      setKV(1, "—");
-      setKV(2, "—");
-      setKV(3, "—");
-      setKV(4, "—");
-      setKV(5, "—");
-      setKV(6, "—");
-      setKV(7, "—");
+      setStatusPill("リセットしました", "info");
+      // 0:状態, 1..11 を戻す
+      for(let i=1;i<=11;i++) setKV(i, "—");
       legendMax.textContent = "— MPa";
     });
   </script>
