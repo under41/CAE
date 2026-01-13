@@ -3,535 +3,734 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>中学生向け かんたんCAE（木材・梁・釘接合）</title>
+  <title>木材 なんちゃってCAE（中学生向け）</title>
   <style>
-    :root { --bg:#0b1020; --panel:#111a33; --text:#e8eeff; --muted:#a9b6e8; --ok:#63ffa1; --ng:#ff5e7a; }
-    body { margin:0; font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; background:var(--bg); color:var(--text); }
-    .wrap { display:grid; grid-template-columns: 360px 1fr; min-height:100vh; }
-    .panel { background:var(--panel); padding:16px 14px; border-right:1px solid rgba(255,255,255,.08); }
-    .panel h1 { font-size:16px; margin:0 0 10px; }
-    .panel .hint { font-size:12px; color:var(--muted); line-height:1.5; margin-bottom:12px; }
-    .row { margin:10px 0; }
-    label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
-    input, select, button {
-      width:100%; box-sizing:border-box;
-      padding:10px 10px; border-radius:10px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(0,0,0,.25);
+    :root{
+      --bg:#0b1020;
+      --panel:#111a33;
+      --card:#162146;
+      --text:#e9eefc;
+      --muted:#aab6dd;
+      --accent:#7aa2ff;
+      --bad:#ff4d4d;
+      --good:#4dffb5;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      background: radial-gradient(1200px 600px at 20% 10%, #18224a 0%, var(--bg) 60%);
+      color:var(--text);
+    }
+    header{
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+      background: rgba(10,14,30,0.6);
+      backdrop-filter: blur(10px);
+      position:sticky; top:0; z-index:10;
+    }
+    header .badge{
+      padding:4px 10px;
+      border:1px solid rgba(255,255,255,0.15);
+      border-radius:999px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    header h1{
+      margin:0;
+      font-size:16px;
+      font-weight:700;
+      letter-spacing:0.2px;
+    }
+
+    .wrap{
+      display:grid;
+      grid-template-columns: 380px 1fr;
+      gap:14px;
+      padding:14px;
+      height: calc(100vh - 54px);
+    }
+
+    .panel{
+      background: linear-gradient(180deg, rgba(17,26,51,0.95), rgba(10,14,30,0.95));
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:18px;
+      padding:12px;
+      overflow:auto;
+    }
+    .panel h2{
+      margin:10px 8px 8px;
+      font-size:14px;
+      color:#dbe3ff;
+    }
+    .card{
+      background: rgba(22,33,70,0.75);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:16px;
+      padding:10px;
+      margin:8px 6px;
+    }
+    .row{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    label{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+    input[type="number"], select, input[type="text"]{
+      width:100%;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(10,14,30,0.55);
       color:var(--text);
       outline:none;
     }
-    input[type="file"] { padding:9px; }
-    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .btn { cursor:pointer; background:rgba(255,255,255,.08); }
-    .btn:hover { background:rgba(255,255,255,.12); }
-    .card {
-      margin-top:12px; padding:12px; border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(0,0,0,.18);
+    input[type="range"]{
+      width:100%;
     }
-    .kpi { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .kpi div { padding:10px; border-radius:12px; background:rgba(255,255,255,.06); }
-    .kpi .v { font-size:14px; margin-top:6px; }
-    .badge { display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; }
-    .ok { background:rgba(99,255,161,.15); color:var(--ok); border:1px solid rgba(99,255,161,.3); }
-    .ng { background:rgba(255,94,122,.15); color:var(--ng); border:1px solid rgba(255,94,122,.3); }
-    #view { position:relative; }
-    #canvas { display:block; width:100%; height:100%; }
-    .legend {
-      position:absolute; left:12px; bottom:12px;
-      background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.12);
-      padding:10px; border-radius:12px; font-size:12px; color:var(--muted);
-      backdrop-filter: blur(8px);
-      max-width: 320px;
+    .hint{
+      font-size:12px;
+      color:rgba(233,238,252,0.75);
+      line-height:1.35;
+      margin-top:6px;
     }
-    .bar { height:10px; border-radius:999px; margin-top:6px;
-      background: linear-gradient(90deg, #2b6cff, #58b7ff, #ffe66d, #ff4b5c);
+    .btns{
+      display:flex;
+      gap:10px;
+      margin:10px 6px 6px;
     }
-    .small { font-size:11px; color:var(--muted); }
+    button{
+      flex:1;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(122,162,255,0.18);
+      color:var(--text);
+      font-weight:700;
+      cursor:pointer;
+    }
+    button:hover{ background: rgba(122,162,255,0.28); }
+    button.secondary{
+      background: rgba(255,255,255,0.08);
+    }
+    .result{
+      margin:8px 6px;
+      padding:12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(10,14,30,0.55);
+    }
+    .kv{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:8px;
+      font-size:13px;
+      margin:4px 0;
+    }
+    .kv .k{ color:var(--muted); }
+    .pill{
+      display:inline-block;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:12px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+    }
+    .pill.good{ border-color: rgba(77,255,181,0.35); color: var(--good); }
+    .pill.bad{ border-color: rgba(255,77,77,0.45); color: var(--bad); }
+
+    .view{
+      position:relative;
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,0.10);
+      background: #070b16;
+    }
+    #canvas{
+      width:100%;
+      height:100%;
+      display:block;
+    }
+    .legend{
+      position:absolute;
+      left:12px; bottom:12px;
+      background: rgba(10,14,30,0.72);
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:14px;
+      padding:10px 10px;
+      min-width: 220px;
+      backdrop-filter: blur(10px);
+    }
+    .legend .bar{
+      height:12px;
+      border-radius:999px;
+      background: linear-gradient(90deg, #2b5bff 0%, #ff2b2b 100%);
+      border:1px solid rgba(255,255,255,0.12);
+      margin:6px 0 4px;
+    }
+    .legend .small{
+      display:flex;
+      justify-content:space-between;
+      font-size:11px;
+      color:rgba(233,238,252,0.78);
+    }
+    .toast{
+      position:absolute;
+      top:12px; left:12px;
+      background: rgba(10,14,30,0.72);
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:14px;
+      padding:10px 12px;
+      max-width: 420px;
+      font-size:12px;
+      color:rgba(233,238,252,0.88);
+      backdrop-filter: blur(10px);
+    }
+    .note{
+      font-size:12px;
+      color:rgba(233,238,252,0.70);
+      margin:6px 8px 10px;
+      line-height:1.45;
+    }
+
+    @media (max-width: 980px){
+      .wrap{ grid-template-columns: 1fr; height:auto; }
+      .view{ height: 60vh; }
+    }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="panel">
-    <h1>かんたんCAE（木材・梁・釘接合）</h1>
-    <div class="hint">
-      STLを読み込む → 棚板（梁）として曲げ応力を計算し、<br/>
-      <b>青=負荷が小さい / 赤=負荷が大きい</b>で色付けします。<br/>
-      釘接合は「支点反力 ÷ 釘本数」で1本あたりを計算し、許容強度と比較します。
-    </div>
+  <header>
+    <span class="badge">木材専用</span>
+    <h1>なんちゃってCAE：STLを読み込んで「赤⇄青」で負荷を見える化</h1>
+    <span class="badge">梁の曲げ（近似）</span>
+  </header>
 
-    <div class="row">
-      <label>STLを読み込む</label>
-      <input id="stlFile" type="file" accept=".stl" />
-    </div>
+  <div class="wrap">
+    <aside class="panel">
+      <div class="note">
+        これは「本格CAE」ではなく、STLの外形から梁を近似して計算します。<br/>
+        でも<strong>直感UI</strong>で「どこが危ないか（赤）」と「釘が耐えるか」を学べる教材用です。
+      </div>
 
-    <div class="row grid2">
-      <div>
-        <label>木材のヤング率 E（GPa）</label>
-        <input id="E" type="number" step="0.1" value="10.0" />
-      </div>
-      <div>
-        <label>安全率（任意）</label>
-        <input id="SF" type="number" step="0.1" value="1.5" />
-      </div>
-    </div>
+      <h2>① STLを読み込む</h2>
+      <div class="card">
+        <label>STLファイル</label>
+        <input id="stlFile" type="file" accept=".stl" />
 
-    <div class="row">
-      <label>荷重タイプ</label>
-      <select id="loadType">
-        <option value="udl">等分布荷重（棚に本が均等に乗る）</option>
-        <option value="point">集中荷重（1点にドン）</option>
-      </select>
-    </div>
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>STLの単位</label>
+            <select id="unit">
+              <option value="0.001" selected>mm（よくある）→ m</option>
+              <option value="0.01">cm → m</option>
+              <option value="1">m → m</option>
+            </select>
+          </div>
+          <div>
+            <label>梁の向き（長い方向）</label>
+            <select id="axis">
+              <option value="auto" selected>自動（いちばん長い方向）</option>
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z">Z</option>
+            </select>
+          </div>
+        </div>
 
-    <div class="row grid2">
-      <div>
-        <label>等分布荷重 w（N/m）</label>
-        <input id="w" type="number" step="10" value="300" />
+        <div class="hint">
+          ※ 色の変化が分かりやすいように、読み込み後は自動で中央に置きます。
+        </div>
       </div>
-      <div>
-        <label>集中荷重 P（N）</label>
-        <input id="P" type="number" step="10" value="200" />
-      </div>
-    </div>
 
-    <div class="row grid2">
-      <div>
-        <label>集中荷重 位置（0〜1）</label>
-        <input id="a" type="number" step="0.05" min="0" max="1" value="0.5" />
+      <h2>② 材料（木材）</h2>
+      <div class="card">
+        <div class="row">
+          <div>
+            <label>曲げの許容応力（MPa）</label>
+            <input id="allowBendMPa" type="number" value="20" min="1" step="1" />
+          </div>
+          <div>
+            <label>表示用：ヤング率E（GPa）</label>
+            <input id="E_GPa" type="number" value="10" min="1" step="0.5" />
+          </div>
+        </div>
+        <div class="hint">
+          「許容応力」は設計者が決める安全ラインです（教材なので自由に調整OK）。
+        </div>
       </div>
-      <div>
-        <label>支持条件</label>
-        <select id="support">
-          <option value="simply">両端支持（棚板の典型）</option>
-          <option value="cantilever">片持ち（壁付け棚）</option>
+
+      <h2>③ 荷重（重さ）</h2>
+      <div class="card">
+        <label>荷重の種類</label>
+        <select id="loadType">
+          <option value="point" selected>一点にのせる（点荷重）</option>
+          <option value="udl">全体にのせる（等分布荷重）</option>
         </select>
-      </div>
-    </div>
 
-    <div class="row grid2">
-      <div>
-        <label>釘本数（左/固定側）</label>
-        <input id="nailL" type="number" step="1" min="1" value="4" />
-      </div>
-      <div>
-        <label>釘本数（右側）</label>
-        <input id="nailR" type="number" step="1" min="0" value="4" />
-      </div>
-    </div>
-
-    <div class="row">
-      <label>釘1本あたり許容強度（N）※自由に設定してOK</label>
-      <input id="nailAllow" type="number" step="10" value="250" />
-    </div>
-
-    <div class="row grid2">
-      <div>
-        <label>断面 高さ h（mm）※自動推定</label>
-        <input id="h" type="number" step="1" value="" placeholder="自動" />
-      </div>
-      <div>
-        <label>断面 幅 b（mm）※自動推定</label>
-        <input id="b" type="number" step="1" value="" placeholder="自動" />
-      </div>
-    </div>
-    <div class="small">STLが棚板っぽくない形だと推定がズレます。ズレたらここで上書きしてください。</div>
-
-    <div class="row">
-      <button class="btn" id="recalc">再計算して色を更新</button>
-    </div>
-
-    <div class="card">
-      <div class="kpi">
-        <div>
-          <div class="small">推定スパン L（mm）</div>
-          <div class="v" id="kL">—</div>
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label id="loadMagLabel">重さ P（N）</label>
+            <input id="loadMag" type="number" value="100" min="1" step="1" />
+          </div>
+          <div>
+            <label>位置（左→右）</label>
+            <input id="loadPos" type="range" min="0" max="100" value="50" />
+            <div class="hint"><span id="loadPosTxt">50</span>%</div>
+          </div>
         </div>
-        <div>
-          <div class="small">最大曲げ応力 σmax（MPa）</div>
-          <div class="v" id="kS">—</div>
-        </div>
-        <div>
-          <div class="small">最大たわみ δmax（mm）</div>
-          <div class="v" id="kD">—</div>
-        </div>
-        <div>
-          <div class="small">釘（最悪側）1本あたり（N）</div>
-          <div class="v" id="kN">—</div>
+
+        <div class="hint">
+          端は「両端支持（単純支持）」として計算します（中学生向けの基本モデル）。
         </div>
       </div>
-      <div style="margin-top:10px;">
-        <span id="judge" class="badge">—</span>
-        <div class="small" id="judgeDetail" style="margin-top:6px;">—</div>
+
+      <h2>④ 接合部（釘）の破壊判定</h2>
+      <div class="card">
+        <div class="row">
+          <div>
+            <label>接合位置（左→右）</label>
+            <input id="jointPos" type="range" min="0" max="100" value="10" />
+            <div class="hint"><span id="jointPosTxt">10</span>%</div>
+          </div>
+          <div>
+            <label>釘の本数</label>
+            <input id="nNails" type="number" value="4" min="1" step="1" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>釘1本の許容強度（N）</label>
+            <input id="allowNailN" type="number" value="80" min="1" step="1" />
+          </div>
+          <div>
+            <label>判定の考え方</label>
+            <input type="text" value="せん断力 ÷ 本数 ≤ 許容" readonly />
+          </div>
+        </div>
+
+        <div class="hint">
+          接合部に働く力は「梁のせん断力 V」を使って近似します（教材用）。
+        </div>
       </div>
-    </div>
+
+      <div class="btns">
+        <button id="analyzeBtn">解析する</button>
+        <button id="resetBtn" class="secondary">リセット</button>
+      </div>
+
+      <div class="result" id="resultBox">
+        <div class="kv"><div class="k">状態</div><div class="v"><span class="pill">STL未読み込み</span></div></div>
+        <div class="kv"><div class="k">梁の長さ L</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">断面（幅b × 高さh）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">最大応力（MPa）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">安全率（許容/最大）</div><div class="v">—</div></div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08); margin:10px 0;">
+        <div class="kv"><div class="k">接合部のせん断力 V（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">釘1本あたり（N）</div><div class="v">—</div></div>
+        <div class="kv"><div class="k">釘の判定</div><div class="v">—</div></div>
+      </div>
+    </aside>
+
+    <main class="view">
+      <div class="toast" id="toast">
+        ① STLを読み込む → ② 重さ・釘の条件 → 「解析する」<br/>
+        赤いほど負荷が大きい（危険寄り）、青いほど小さい（安全寄り）
+      </div>
+      <canvas id="canvas"></canvas>
+      <div class="legend">
+        <div style="font-size:12px;color:rgba(233,238,252,0.85);">負荷（応力）</div>
+        <div class="bar"></div>
+        <div class="small"><span>小（青）</span><span>大（赤）</span></div>
+        <div class="small" style="margin-top:6px;">
+          <span id="legendMin">0 MPa</span>
+          <span id="legendMax">— MPa</span>
+        </div>
+      </div>
+    </main>
   </div>
 
-  <div id="view">
-    <canvas id="canvas"></canvas>
-    <div class="legend">
-      色の意味：青（小）→ 赤（大）
-      <div class="bar"></div>
-      <div class="small">※これは教育用の簡易モデル（梁の公式）です。複雑形状の厳密FEMではありません。</div>
-    </div>
-  </div>
-</div>
+  <!-- three.js (CDN) -->
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+    import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+    import { STLLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js";
 
-<!-- three.js (CDN) -->
-<script type="module">
-  import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-  import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-  import { STLLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js";
+    // ---------- UI ----------
+    const el = (id)=>document.getElementById(id);
+    const stlFile = el("stlFile");
+    const unitSel = el("unit");
+    const axisSel = el("axis");
 
-  const canvas = document.getElementById("canvas");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const allowBendMPa = el("allowBendMPa");
+    const loadType = el("loadType");
+    const loadMag = el("loadMag");
+    const loadMagLabel = el("loadMagLabel");
+    const loadPos = el("loadPos");
+    const loadPosTxt = el("loadPosTxt");
 
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1020);
+    const jointPos = el("jointPos");
+    const jointPosTxt = el("jointPosTxt");
+    const nNails = el("nNails");
+    const allowNailN = el("allowNailN");
 
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
-  camera.position.set(0.6, 0.4, 0.8);
+    const analyzeBtn = el("analyzeBtn");
+    const resetBtn = el("resetBtn");
 
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
+    const resultBox = el("resultBox");
+    const legendMax = el("legendMax");
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(1, 2, 1);
-  scene.add(dir);
+    loadPos.addEventListener("input", ()=> loadPosTxt.textContent = loadPos.value);
+    jointPos.addEventListener("input", ()=> jointPosTxt.textContent = jointPos.value);
 
-  const grid = new THREE.GridHelper(2, 20, 0x334477, 0x223355);
-  grid.position.y = -0.25;
-  scene.add(grid);
-
-  let mesh = null;
-  let geometry = null;
-
-  // UI elements
-  const el = (id)=>document.getElementById(id);
-  const stlFile = el("stlFile");
-  const recalcBtn = el("recalc");
-
-  function resize() {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
-  new ResizeObserver(resize).observe(document.getElementById("view"));
-  resize();
-
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
-
-  // Blue -> Red gradient (simple)
-  function stressToColor(t01){
-    t01 = clamp(t01, 0, 1);
-    // piecewise: blue -> cyan -> yellow -> red
-    const c1 = new THREE.Color("#2b6cff");
-    const c2 = new THREE.Color("#58b7ff");
-    const c3 = new THREE.Color("#ffe66d");
-    const c4 = new THREE.Color("#ff4b5c");
-    let c = new THREE.Color();
-    if (t01 < 0.33) c.copy(c1).lerp(c2, t01/0.33);
-    else if (t01 < 0.66) c.copy(c2).lerp(c3, (t01-0.33)/0.33);
-    else c.copy(c3).lerp(c4, (t01-0.66)/0.34);
-    return c;
-  }
-
-  // ---------- Beam formulas ----------
-  // Units:
-  // L: m, w: N/m, P: N, E: Pa, I: m^4, b/h: m
-  function M_simply_udl(x, L, w){ return w * x * (L - x) / 2; } // N*m
-  function V_simply_udl(x, L, w){ return w*(L/2 - x); } // N
-  function R_simply_udl(L, w){ return w*L/2; } // N per support
-
-  function M_simply_point(x, L, P, a){
-    // load at x=a (m), simply supported
-    // reactions:
-    const R1 = P*(L-a)/L;
-    // bending moment:
-    if (x <= a) return R1*x;
-    return R1*x - P*(x-a);
-  }
-  function R_simply_point(L, P, a){
-    const R1 = P*(L-a)/L;
-    const R2 = P*a/L;
-    return {R1, R2};
-  }
-
-  function M_cantilever_udl(x, L, w){
-    // fixed at x=0, free at x=L
-    // moment at section x: M = w*(L-x)^2/2
-    return w * (L-x)*(L-x) / 2;
-  }
-  function R_cantilever_udl(L, w){ return w*L; } // shear at fixed end
-
-  function M_cantilever_point(x, L, P, a){
-    // fixed at 0, point load at x=a
-    if (x <= a) return P*(a - x);
-    return 0;
-  }
-  function R_cantilever_point(P){ return P; }
-
-  function deflection_estimate(support, loadType, L, w, P, a, E, I){
-    // return max deflection (m) - simple closed forms for typical cases
-    if (support === "simply" && loadType === "udl") {
-      // δmax = 5 w L^4 / (384 E I)
-      return 5*w*Math.pow(L,4) / (384*E*I);
-    }
-    if (support === "cantilever" && loadType === "udl") {
-      // δmax at free end = w L^4 / (8 E I)
-      return w*Math.pow(L,4) / (8*E*I);
-    }
-    if (support === "simply" && loadType === "point") {
-      // point load at a (from left), max deflection occurs near load; use standard formula at load:
-      // δ(a) = P a^2 (L-a)^2 / (3 E I L)
-      return P*a*a*(L-a)*(L-a) / (3*E*I*L);
-    }
-    if (support === "cantilever" && loadType === "point") {
-      // point load at a: deflection at free end depends; simplest: if load at free end (a=L): δ = P L^3 / (3 E I)
-      // for general a: deflection at load point: δ(a)= P a^3/(3EI); free end larger, but keep educational:
-      return P*Math.pow(a,3) / (3*E*I);
-    }
-    return 0;
-  }
-
-  // ---------- STL load & inference ----------
-  const loader = new STLLoader();
-
-  function setMeshFromGeometry(g){
-    if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); mesh=null; }
-    geometry = g;
-    geometry.computeVertexNormals();
-
-    // Ensure color attribute exists
-    const count = geometry.attributes.position.count;
-    const colors = new Float32Array(count * 3);
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.6,
-      metalness: 0.0
+    loadType.addEventListener("change", ()=>{
+      if(loadType.value==="point"){
+        loadMagLabel.textContent = "重さ P（N）";
+        loadPos.parentElement.style.display = "";
+        loadPosTxt.parentElement.style.display = "";
+      }else{
+        loadMagLabel.textContent = "重さ w（N/m）";
+        // UDLでも位置は使わないが、UIとして残すと混乱するので隠す
+        loadPos.parentElement.style.display = "none";
+        loadPosTxt.parentElement.style.display = "none";
+      }
     });
 
-    mesh = new THREE.Mesh(geometry, mat);
-    // center + scale to nice viewing
-    geometry.computeBoundingBox();
-    const bb = geometry.boundingBox;
-    const center = new THREE.Vector3();
-    bb.getCenter(center);
-    mesh.position.sub(center);
+    // ---------- THREE ----------
+    const canvas = el("canvas");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
-    const size = new THREE.Vector3();
-    bb.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const s = 1.2 / maxDim;
-    mesh.scale.setScalar(s);
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x070b16, 5, 35);
 
-    scene.add(mesh);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 200);
+    camera.position.set(3, 2, 4);
 
-    // Fill guessed b/h for user
-    // We'll infer beam axis as the largest bbox dimension in original geometry
-    const dims = [size.x, size.y, size.z];
-    const axis = dims.indexOf(Math.max(...dims)); // 0=x,1=y,2=z
-    const Lmm = dims[axis]; // in mm if STL was mm; we assume mm typical
-    // cross-section dims are the other two
-    const other = [0,1,2].filter(i=>i!==axis);
-    const hmm = Math.max(dims[other[0]], dims[other[1]]);
-    const bmm = Math.min(dims[other[0]], dims[other[1]]);
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
 
-    // Only set if empty
-    if (!el("h").value) el("h").value = hmm.toFixed(1);
-    if (!el("b").value) el("b").value = bmm.toFixed(1);
+    const hemi = new THREE.HemisphereLight(0xbfd0ff, 0x111122, 1.1);
+    scene.add(hemi);
 
-    // Store axis for stress mapping
-    mesh.userData.axis = axis;
-    mesh.userData.Lmm = Lmm;
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(3, 5, 2);
+    scene.add(dir);
 
-    recalc();
-  }
+    const grid = new THREE.GridHelper(20, 20, 0x334477, 0x223355);
+    grid.position.y = -0.8;
+    scene.add(grid);
 
-  stlFile.addEventListener("change", async (e)=>{
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const buf = await f.arrayBuffer();
-    const g = loader.parse(buf);
-    setMeshFromGeometry(g);
-  });
+    let mesh = null;
+    let geomOriginal = null;
 
-  recalcBtn.addEventListener("click", recalc);
-
-  function recalc(){
-    if (!mesh || !geometry) return;
-
-    // Read inputs
-    const E_GPa = parseFloat(el("E").value || "10");
-    const SF = Math.max(1.0, parseFloat(el("SF").value || "1.5"));
-    const support = el("support").value; // simply / cantilever
-    const loadType = el("loadType").value; // udl / point
-
-    const w = parseFloat(el("w").value || "0"); // N/m
-    const P = parseFloat(el("P").value || "0"); // N
-    const a01 = clamp(parseFloat(el("a").value || "0.5"), 0, 1);
-
-    const nailL = Math.max(1, parseInt(el("nailL").value || "1", 10));
-    const nailR = Math.max(0, parseInt(el("nailR").value || "0", 10));
-    const nailAllow = Math.max(1, parseFloat(el("nailAllow").value || "250")); // N
-
-    // Infer span L from original bbox size (mm) and axis
-    geometry.computeBoundingBox();
-    const bb = geometry.boundingBox;
-    const size = new THREE.Vector3(); bb.getSize(size);
-
-    const axis = mesh.userData.axis ?? 0;
-    const dims = [size.x, size.y, size.z];
-    const Lmm = dims[axis];
-    const L = (Lmm/1000); // m (assume STL in mm)
-
-    // Cross-section (mm -> m)
-    const hmm = Math.max(1, parseFloat(el("h").value || "1"));
-    const bmm = Math.max(1, parseFloat(el("b").value || "1"));
-    const h = hmm/1000;
-    const b = bmm/1000;
-
-    // Second moment of area I (rectangular) about bending axis: I = b*h^3/12
-    const I = b * Math.pow(h,3) / 12;
-    const c = h/2;
-
-    // Material E (Pa)
-    const E = E_GPa * 1e9;
-
-    // Compute stress along beam and color geometry by position along axis
-    const pos = geometry.attributes.position;
-    const col = geometry.attributes.color;
-
-    // Find min/max along chosen axis for mapping x in [0, L]
-    let minA = Infinity, maxA = -Infinity;
-    for (let i=0; i<pos.count; i++){
-      const v = axis===0 ? pos.getX(i) : axis===1 ? pos.getY(i) : pos.getZ(i);
-      minA = Math.min(minA, v);
-      maxA = Math.max(maxA, v);
+    function resize(){
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
     }
-    const spanA = Math.max(1e-9, (maxA - minA));
+    window.addEventListener("resize", resize);
 
-    // Max stress for normalization
-    let sigmaMax = 0;
-
-    function momentAt(x){
-      if (support === "simply" && loadType === "udl") return M_simply_udl(x, L, w);
-      if (support === "simply" && loadType === "point") return M_simply_point(x, L, P, a01*L);
-      if (support === "cantilever" && loadType === "udl") return M_cantilever_udl(x, L, w);
-      if (support === "cantilever" && loadType === "point") return M_cantilever_point(x, L, P, a01*L);
-      return 0;
+    function animate(){
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
     }
+    resize();
+    animate();
 
-    // First pass: compute sigma per vertex and max
-    const sigmas = new Float32Array(pos.count);
-    for (let i=0; i<pos.count; i++){
-      const vA = axis===0 ? pos.getX(i) : axis===1 ? pos.getY(i) : pos.getZ(i);
-      const x = ((vA - minA) / spanA) * L; // m
-      const M = Math.abs(momentAt(x));
-      const sigma = (I>0) ? (M * c / I) : 0; // Pa
-      sigmas[i] = sigma;
-      sigmaMax = Math.max(sigmaMax, sigma);
+    // ---------- Helpers ----------
+    function setStatusPill(text, cls=""){
+      const pill = resultBox.querySelector(".pill");
+      pill.textContent = text;
+      pill.className = "pill" + (cls ? " " + cls : "");
     }
-    sigmaMax = Math.max(sigmaMax, 1e-9);
-
-    // Second pass: colorize
-    for (let i=0; i<pos.count; i++){
-      const t = sigmas[i] / sigmaMax; // 0..1
-      const ccol = stressToColor(t);
-      col.setXYZ(i, ccol.r, ccol.g, ccol.b);
-    }
-    col.needsUpdate = true;
-
-    // Deflection estimate
-    const dmax = deflection_estimate(support, loadType, L, w, P, a01*L, E, I); // m
-
-    // Nail forces (use reactions / shear)
-    let worstPerNail = 0;
-    let detail = "";
-
-    if (support === "simply") {
-      if (loadType === "udl") {
-        const R = R_simply_udl(L, w); // N
-        const leftPer = R / nailL;
-        const rightPer = (nailR>0) ? (R / nailR) : Infinity;
-        worstPerNail = Math.max(leftPer, rightPer);
-        detail = `両端支持：反力は左右それぞれ R = wL/2 = ${R.toFixed(1)}N`;
-      } else {
-        const a = a01*L;
-        const {R1, R2} = R_simply_point(L, P, a);
-        const leftPer = R1 / nailL;
-        const rightPer = (nailR>0) ? (R2 / nailR) : Infinity;
-        worstPerNail = Math.max(leftPer, rightPer);
-        detail = `両端支持：反力 左R1=${R1.toFixed(1)}N, 右R2=${R2.toFixed(1)}N`;
+    function setKV(index, valueText){
+      // kvの順番は固定（0は状態）
+      const rows = resultBox.querySelectorAll(".kv");
+      if(rows[index]){
+        rows[index].querySelector(".v").innerHTML = valueText;
       }
-    } else {
-      // cantilever: only fixed side takes it -> nailL used as fixed side
-      if (loadType === "udl") {
-        const R = R_cantilever_udl(L, w);
-        worstPerNail = R / nailL;
-        detail = `片持ち：固定側せん断 V = wL = ${R.toFixed(1)}N（固定側の釘で受ける）`;
-      } else {
-        const R = R_cantilever_point(P);
-        worstPerNail = R / nailL;
-        detail = `片持ち：固定側せん断 V = P = ${R.toFixed(1)}N（固定側の釘で受ける）`;
+    }
+    function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+    // 軸をXにそろえる回転（教育用に単純）
+    function rotationToX(axis){
+      const m = new THREE.Matrix4();
+      if(axis === "x") return m; // identity
+      if(axis === "y"){
+        // Y→X: Z軸まわりに -90°
+        m.makeRotationZ(-Math.PI/2);
+        return m;
+      }
+      if(axis === "z"){
+        // Z→X: Y軸まわりに +90°
+        m.makeRotationY(Math.PI/2);
+        return m;
+      }
+      return m;
+    }
+
+    function chooseAutoAxisFromBBox(bbox){
+      const size = new THREE.Vector3();
+      bbox.getSize(size);
+      const abs = {x:size.x, y:size.y, z:size.z};
+      let axis="x";
+      if(abs.y>=abs.x && abs.y>=abs.z) axis="y";
+      if(abs.z>=abs.x && abs.z>=abs.y) axis="z";
+      return axis;
+    }
+
+    function nice(n, digits=3){
+      if(!isFinite(n)) return "—";
+      const p = Math.pow(10, digits);
+      return (Math.round(n*p)/p).toString();
+    }
+
+    // ---------- Beam physics (simply supported) ----------
+    function beamForces(L, load){
+      // returns functions: M(x), V(x)
+      if(load.type==="point"){
+        const P = load.P;
+        const a = load.a; // from left
+        const R1 = P*(L-a)/L;
+        // const R2 = P*a/L;
+        const V = (x)=> (x < a ? R1 : R1 - P);
+        const M = (x)=> (x < a ? R1*x : R1*x - P*(x-a));
+        return { M, V };
+      }else{
+        const w = load.w;
+        const R1 = w*L/2;
+        const V = (x)=> (R1 - w*x);
+        const M = (x)=> (R1*x - w*x*x/2);
+        return { M, V };
       }
     }
 
-    // Apply safety factor to allowable (educational: "安全率をかけると厳しくなる")
-    const allowEff = nailAllow / SF;
-    const ok = (worstPerNail <= allowEff);
-
-    // Update KPIs
-    el("kL").textContent = `${Lmm.toFixed(1)} mm`;
-    el("kS").textContent = `${(sigmaMax/1e6).toFixed(2)} MPa`;
-    el("kD").textContent = `${(dmax*1000).toFixed(2)} mm`;
-    el("kN").textContent = isFinite(worstPerNail) ? `${worstPerNail.toFixed(1)} N` : `∞（右側の釘本数が0）`;
-
-    const judge = el("judge");
-    const judgeDetail = el("judgeDetail");
-    if (!isFinite(worstPerNail)) {
-      judge.className = "badge ng";
-      judge.textContent = "破壊する（計算上）";
-      judgeDetail.textContent = `右側の釘本数が0のため、右側が負担できません。${detail}`;
-    } else if (ok) {
-      judge.className = "badge ok";
-      judge.textContent = "破壊しない（計算上）";
-      judgeDetail.textContent = `${detail} / 判定：1本あたり ${worstPerNail.toFixed(1)}N ≤ 許容 ${allowEff.toFixed(1)}N（許容${nailAllow}N ÷ 安全率${SF}）`;
-    } else {
-      judge.className = "badge ng";
-      judge.textContent = "破壊する（計算上）";
-      judgeDetail.textContent = `${detail} / 判定：1本あたり ${worstPerNail.toFixed(1)}N > 許容 ${allowEff.toFixed(1)}N（許容${nailAllow}N ÷ 安全率${SF}）`;
+    function updateVertexColorsFromStress(geometry, stressAbsArr, maxStress){
+      const n = stressAbsArr.length;
+      const colors = new Float32Array(n*3);
+      const denom = maxStress > 0 ? maxStress : 1;
+      for(let i=0;i<n;i++){
+        const t = clamp01(stressAbsArr[i]/denom);
+        // 青→赤（指定通り）
+        const r = t;
+        const g = 0.0;
+        const b = 1.0 - t;
+        colors[i*3+0] = r;
+        colors[i*3+1] = g;
+        colors[i*3+2] = b;
+      }
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geometry.attributes.color.needsUpdate = true;
     }
-  }
 
-  // Render loop
-  function tick(){
-    controls.update();
-    renderer.render(scene, camera);
-    requestAnimationFrame(tick);
-  }
-  tick();
+    function ensureMeshMaterialUsesVertexColors(){
+      if(!mesh) return;
+      mesh.material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.75,
+        metalness: 0.0,
+      });
+    }
 
-  // Load a simple default geometry if user doesn't load STL (so it "works" immediately)
-  // Rectangular beam as placeholder
-  {
-    const g = new THREE.BoxGeometry(1.0, 0.1, 0.25, 60, 2, 2);
-    // Convert to BufferGeometry with positions already
-    setMeshFromGeometry(g);
-    // Put example values
-    el("h").value = "25"; // mm
-    el("b").value = "100"; // mm
-    el("w").value = "300";
-    recalc();
-  }
-</script>
+    function centerAndFit(){
+      if(!mesh) return;
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const size = new THREE.Vector3(); bbox.getSize(size);
+      const center = new THREE.Vector3(); bbox.getCenter(center);
+      mesh.position.sub(center);
+
+      // camera fit
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const dist = maxDim * 1.6 + 1;
+      camera.position.set(dist, dist*0.65, dist);
+      controls.target.set(0,0,0);
+      controls.update();
+    }
+
+    // ---------- Load STL ----------
+    const loader = new STLLoader();
+    stlFile.addEventListener("change", async (ev)=>{
+      const file = ev.target.files?.[0];
+      if(!file) return;
+
+      setStatusPill("読み込み中…");
+      const arrayBuffer = await file.arrayBuffer();
+      const geom = loader.parse(arrayBuffer);
+
+      // keep original (for reset)
+      geomOriginal = geom.clone();
+
+      // remove old mesh
+      if(mesh){
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+      }
+
+      // default material (color later)
+      const mat = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
+      mesh = new THREE.Mesh(geom, mat);
+      scene.add(mesh);
+
+      // scale by unit (mm->m etc)
+      const s = Number(unitSel.value || "0.001");
+      mesh.scale.setScalar(s);
+
+      // apply axis->X rotation to geometry itself (so analysis is easier)
+      // First: decide axis (auto uses original bbox)
+      const bbox0 = new THREE.Box3().setFromObject(mesh);
+      let axis = axisSel.value;
+      if(axis === "auto") axis = chooseAutoAxisFromBBox(bbox0);
+
+      const rot = rotationToX(axis);
+      mesh.geometry.applyMatrix4(rot);
+
+      // recalc normals & bbox
+      mesh.geometry.computeVertexNormals();
+      mesh.geometry.computeBoundingBox();
+      mesh.geometry.computeBoundingSphere();
+
+      centerAndFit();
+
+      setStatusPill("STL読み込みOK", "good");
+      // show basic dims
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const size = new THREE.Vector3(); bbox.getSize(size);
+      setKV(1, `${nice(size.x,3)} m`);
+      setKV(2, `${nice(size.z,3)} m × ${nice(size.y,3)} m`);
+
+      // reset colors to neutral
+      if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
+      mesh.material = mat;
+
+      legendMax.textContent = "— MPa";
+    });
+
+    // ---------- Analyze ----------
+    analyzeBtn.addEventListener("click", ()=>{
+      if(!mesh){
+        setStatusPill("STLが必要です", "bad");
+        return;
+      }
+
+      // Ensure X-axis beam coordinates
+      // (already rotated on load; if axis setting changed after load, user should reload)
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const size = new THREE.Vector3(); bbox.getSize(size);
+
+      const L = size.x;
+      const h = size.y;
+      const b = size.z;
+
+      if(L <= 0 || h <= 0 || b <= 0){
+        setStatusPill("形状が小さすぎるか不正です", "bad");
+        return;
+      }
+
+      // Rectangular section approximation
+      const I = (b * Math.pow(h,3)) / 12.0;
+      const y0 = (bbox.min.y + bbox.max.y)/2;
+
+      // Load
+      const lt = loadType.value;
+      let load = null;
+      if(lt==="point"){
+        const P = Number(loadMag.value);
+        const a = L * (Number(loadPos.value)/100);
+        load = { type:"point", P, a };
+      }else{
+        const w = Number(loadMag.value);
+        load = { type:"udl", w };
+      }
+      const {M, V} = beamForces(L, load);
+
+      // Allowable
+      const allowPa = Number(allowBendMPa.value) * 1e6; // MPa -> Pa
+
+      // Vertex stress
+      const pos = mesh.geometry.getAttribute("position");
+      const count = pos.count;
+      const stressAbs = new Float32Array(count);
+      let maxSigma = 0;
+
+      for(let i=0;i<count;i++){
+        const x = pos.getX(i) + mesh.position.x; // mesh is centered, but bbox is from object: position already used
+        const y = pos.getY(i) + mesh.position.y;
+
+        // Convert x into left-to-right coordinate in [0,L]
+        // We need x0 = bbox.min.x in object space:
+        // Compute xLocal = (x - bbox.min.x)
+        const xLocal = x - bbox.min.x;
+
+        const m = M(xLocal);               // N*m
+        const sigma = (m * (y - y0)) / I;  // Pa (N/m^2)
+        const sAbs = Math.abs(sigma);
+
+        stressAbs[i] = sAbs;
+        if(sAbs > maxSigma) maxSigma = sAbs;
+      }
+
+      // Color map
+      updateVertexColorsFromStress(mesh.geometry, stressAbs, maxSigma);
+      ensureMeshMaterialUsesVertexColors();
+
+      // Results
+      const maxMPa = maxSigma / 1e6;
+      const sf = (maxSigma > 0) ? (allowPa / maxSigma) : Infinity;
+
+      setStatusPill("解析できました", sf >= 1 ? "good" : "bad");
+      setKV(1, `${nice(L,3)} m`);
+      setKV(2, `${nice(b,3)} m × ${nice(h,3)} m`);
+      setKV(3, `${nice(maxMPa,3)} MPa`);
+      setKV(4, isFinite(sf) ? `${nice(sf,3)}` : "—");
+
+      legendMax.textContent = `${nice(maxMPa,3)} MPa`;
+
+      // Joint / nails check (shear)
+      const xj = L * (Number(jointPos.value)/100);
+      const Vj = Math.abs(V(xj)); // N
+      const nails = Math.max(1, Math.floor(Number(nNails.value)));
+      const per = Vj / nails;
+      const allowN = Number(allowNailN.value);
+
+      const pass = per <= allowN;
+
+      setKV(5, `${nice(Vj,3)} N`);
+      setKV(6, `${nice(per,3)} N`);
+      setKV(7, pass ? `<span class="pill good">破壊しない（OK）</span>` : `<span class="pill bad">破壊する（NG）</span>`);
+
+    });
+
+    // ---------- Reset ----------
+    resetBtn.addEventListener("click", ()=>{
+      if(mesh){
+        // reset colors
+        if(mesh.geometry.getAttribute("color")) mesh.geometry.deleteAttribute("color");
+        mesh.material = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
+      }
+      setStatusPill("リセットしました");
+      setKV(1, "—");
+      setKV(2, "—");
+      setKV(3, "—");
+      setKV(4, "—");
+      setKV(5, "—");
+      setKV(6, "—");
+      setKV(7, "—");
+      legendMax.textContent = "— MPa";
+    });
+  </script>
 </body>
 </html>
