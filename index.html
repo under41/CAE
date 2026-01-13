@@ -73,14 +73,14 @@
   <header>
     <span class="badge">木材</span>
     <h1>かんたんCAE：赤⇄青で“危ない場所”を直感表示（釘なし）</h1>
-    <span class="badge">シェーダで確実にグラデ</span>
+    <span class="badge">2回目以降も反映OK</span>
   </header>
 
   <div class="wrap">
     <aside class="panel">
       <div class="note">
-        ✅ STLが粗くてもOK：<b>頂点色ではなく、面（ピクセル）ごとに位置xから色を計算</b>します。<br/>
-        ✅ これで「端の頂点しかない板」でも中央が赤くなります。
+        STLを読み込んで「解析する」を押すだけ。<br/>
+        ✅ 2回目以降も値変更が効くように「uniform更新方式」に修正済み。
       </div>
 
       <h2>① STLを読み込む</h2>
@@ -127,8 +127,6 @@
             <div class="hint"><span id="loadPosTxt">50</span>%</div>
           </div>
         </div>
-
-        <div class="hint">まずは 点荷重 / 50% / 200N で「解析」を押してください。</div>
       </div>
 
       <h2>③ 強度（基準）</h2>
@@ -231,6 +229,7 @@
       statusPill.className = "pill " + kind;
     }
 
+    // THREE
     const canvas = el("canvas");
     const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -256,7 +255,7 @@
     scene.add(grid);
 
     let mesh = null;
-    let baseMat = null;
+    let heatMat = null;
 
     function resize(){
       const rect = canvas.getBoundingClientRect();
@@ -328,32 +327,52 @@
       return a;
     }
 
-    function makeShaderMaterial(){
-      // まずは通常のMeshStandardMaterialを作り、コンパイル時に色だけ差し替える（ライトはそのまま）
+    function makeHeatMaterial(){
       const mat = new THREE.MeshStandardMaterial({ roughness:0.75, metalness:0.0 });
 
-      mat.onBeforeCompile = (shader) => {
-        shader.uniforms.uAxis = { value: 0 };
-        shader.uniforms.uMinA = { value: 0.0 };
-        shader.uniforms.uL    = { value: 1.0 };
-        shader.uniforms.uH    = { value: 0.01 };
-        shader.uniforms.uB    = { value: 0.1 };
-        shader.uniforms.uI    = { value: 1e-9 };
-        shader.uniforms.uLoadType = { value: 0 }; // 0 point, 1 udl
-        shader.uniforms.uP    = { value: 200.0 };
-        shader.uniforms.ua    = { value: 0.5 };
-        shader.uniforms.uw    = { value: 200.0 };
-        shader.uniforms.uSigmaMax = { value: 1.0 };
+      // 初期パラメータ（保持用）
+      mat.userData.params = {
+        show: 0,
+        axis: 0,
+        minA: 0,
+        L: 1,
+        h: 0.01,
+        I: 1e-9,
+        loadType: 0, // 0 point, 1 udl
+        P: 200,
+        a: 0.5,
+        w: 200,
+        sigmaMax: 1.0,
+        baseColor: new THREE.Color(0x9fb2ff),
+      };
 
-        // vertex: position を渡す
+      mat.onBeforeCompile = (shader) => {
+        const p = mat.userData.params;
+
+        shader.uniforms.uShow     = { value: p.show };
+        shader.uniforms.uAxis     = { value: p.axis };
+        shader.uniforms.uMinA     = { value: p.minA };
+        shader.uniforms.uL        = { value: p.L };
+        shader.uniforms.uH        = { value: p.h };
+        shader.uniforms.uI        = { value: p.I };
+        shader.uniforms.uLoadType = { value: p.loadType };
+        shader.uniforms.uP        = { value: p.P };
+        shader.uniforms.ua        = { value: p.a };
+        shader.uniforms.uw        = { value: p.w };
+        shader.uniforms.uSigmaMax = { value: p.sigmaMax };
+        shader.uniforms.uBase     = { value: p.baseColor.clone() };
+
+        // shader参照を保持（2回目以降はここを直接更新する）
+        mat.userData.shader = shader;
+
         shader.vertexShader = shader.vertexShader
           .replace(`#include <common>`, `#include <common>\nvarying vec3 vPos;`)
           .replace(`#include <begin_vertex>`, `#include <begin_vertex>\nvPos = position;`);
 
-        // fragment: vPos から x を計算して σ(x)→色へ
         shader.fragmentShader = shader.fragmentShader
           .replace(`#include <common>`, `#include <common>
             varying vec3 vPos;
+            uniform int uShow;
             uniform int uAxis;
             uniform float uMinA;
             uniform float uL;
@@ -364,12 +383,12 @@
             uniform float ua;
             uniform float uw;
             uniform float uSigmaMax;
+            uniform vec3 uBase;
 
             float getX(vec3 p){
               return (uAxis==0) ? p.x : (uAxis==1 ? p.y : p.z);
             }
             float moment(float x){
-              // x: 0..L
               if(uLoadType==0){
                 float P = uP;
                 float a = ua;
@@ -387,35 +406,39 @@
           .replace(
             `#include <color_fragment>`,
             `
-              // σ(x)=|M(x)|*(h/2)/I
-              float xLocal = clamp(getX(vPos) - uMinA, 0.0, uL);
-              float M = abs(moment(xLocal));
-              float sigma = M * (uH*0.5) / max(uI, 1e-18);
-              float t = clamp(sigma / max(uSigmaMax, 1e-12), 0.0, 1.0);
-              vec3 heat = vec3(t, 0.0, 1.0 - t); // 青→赤
-              diffuseColor.rgb = heat;
+              if(uShow==0){
+                diffuseColor.rgb = uBase;
+              }else{
+                float xLocal = clamp(getX(vPos) - uMinA, 0.0, uL);
+                float M = abs(moment(xLocal));
+                float sigma = M * (uH*0.5) / max(uI, 1e-18);
+                float t = clamp(sigma / max(uSigmaMax, 1e-12), 0.0, 1.0);
+                vec3 heat = vec3(t, 0.0, 1.0 - t); // 青→赤
+                diffuseColor.rgb = heat;
+              }
             `
           );
-
-        mat.userData.shader = shader;
       };
 
       return mat;
     }
 
-    function updateShaderUniforms(params){
-      if(!mesh || !mesh.material || !mesh.material.userData.shader) return;
-      const sh = mesh.material.userData.shader.uniforms;
-      sh.uAxis.value = params.axis;
-      sh.uMinA.value = params.minA;
-      sh.uL.value    = params.L;
-      sh.uH.value    = params.h;
-      sh.uI.value    = params.I;
-      sh.uLoadType.value = params.loadType;
-      sh.uP.value    = params.P;
-      sh.ua.value    = params.a;
-      sh.uw.value    = params.w;
-      sh.uSigmaMax.value = params.sigmaMax;
+    function applyParamsToUniforms(){
+      if(!heatMat || !heatMat.userData.shader) return;
+      const u = heatMat.userData.shader.uniforms;
+      const p = heatMat.userData.params;
+      u.uShow.value     = p.show;
+      u.uAxis.value     = p.axis;
+      u.uMinA.value     = p.minA;
+      u.uL.value        = p.L;
+      u.uH.value        = p.h;
+      u.uI.value        = p.I;
+      u.uLoadType.value = p.loadType;
+      u.uP.value        = p.P;
+      u.ua.value        = p.a;
+      u.uw.value        = p.w;
+      u.uSigmaMax.value = p.sigmaMax;
+      u.uBase.value.copy(p.baseColor);
     }
 
     // STL load
@@ -441,12 +464,17 @@
         geom.computeBoundingBox();
         geom.computeBoundingSphere();
 
-        baseMat = makeShaderMaterial();
-        mesh = new THREE.Mesh(geom, baseMat);
+        heatMat = makeHeatMaterial();
+        mesh = new THREE.Mesh(geom, heatMat);
         scene.add(mesh);
 
         centerAndFit();
         setStatus("STL読み込みOK","good");
+
+        // まずは単色表示（解析前）
+        heatMat.userData.params.show = 0;
+        // シェーダがまだ無い場合もあるので、次フレームで反映
+        requestAnimationFrame(() => applyParamsToUniforms());
 
         outL.textContent = outBH.textContent = outMax.textContent = outSF.textContent = outDbg.textContent = "—";
         legendMax.textContent = "— MPa";
@@ -457,7 +485,7 @@
     });
 
     analyzeBtn.addEventListener("click", ()=>{
-      if(!mesh){
+      if(!mesh || !heatMat){
         setStatus("STLが必要です","bad");
         return;
       }
@@ -466,75 +494,71 @@
       const bbox = mesh.geometry.boundingBox;
       const size = new THREE.Vector3(); bbox.getSize(size);
 
-      let beamAxisSel = axisSel.value;
-      if(beamAxisSel === "auto") beamAxisSel = chooseAxisAuto(size);
+      let axisSelVal = axisSel.value;
+      if(axisSelVal === "auto") axisSelVal = chooseAxisAuto(size);
+      const axisIndex = (axisSelVal === "x") ? 0 : (axisSelVal === "y" ? 1 : 2);
 
-      const axisIndex = (beamAxisSel === "x") ? 0 : (beamAxisSel === "y" ? 1 : 2);
-      const L = {x:size.x, y:size.y, z:size.z}[beamAxisSel];
-
-      // 断面は「最短=厚み h」「中間=幅 b」
-      const dims = [
-        {v:size.x},{v:size.y},{v:size.z}
-      ].sort((a,b)=>a.v-b.v);
+      const L = {x:size.x, y:size.y, z:size.z}[axisSelVal];
+      const dims = [{v:size.x},{v:size.y},{v:size.z}].sort((a,b)=>a.v-b.v);
       const h = dims[0].v;
       const b = dims[1].v;
       const I = (b * Math.pow(h,3))/12.0;
 
       const lt = loadType.value;
-      let P=0, w=0, a=0;
+      let P=0,w=0,a=0;
       if(lt==="point"){
-        P = num(loadMag.value, 200);
-        if(!(P>0)) P = 1; // 念のため
+        P = Math.max(1e-9, num(loadMag.value, 200));
         a = L * (Number(loadPos.value)/100);
         a = Math.max(L*0.05, Math.min(L*0.95, a));
       }else{
-        w = num(loadMag.value, 200);
-        if(!(w>0)) w = 1;
+        w = Math.max(1e-9, num(loadMag.value, 200));
       }
 
-      // 最大モーメント（理論値）
-      let maxM = 0;
-      if(lt==="point"){
-        maxM = P * a * (L - a) / L;
-      }else{
-        maxM = w * L * L / 8.0;
-      }
-      const sigmaMax = Math.max(1e-9, Math.abs(maxM) * (h*0.5) / Math.max(I, 1e-18)); // Pa
+      // 理論最大モーメント
+      const maxM = (lt==="point") ? (P * a * (L-a) / L) : (w * L * L / 8.0);
+      const sigmaMax = Math.max(1e-12, Math.abs(maxM) * (h*0.5) / Math.max(I, 1e-18));
 
-      // UI表示
+      // 表示更新（重要：needsUpdateしない。uniformだけ更新）
+      const p = heatMat.userData.params;
+      p.show = 1;
+      p.axis = axisIndex;
+      p.minA = bbox.min[axisSelVal];
+      p.L = L;
+      p.h = h;
+      p.I = I;
+      p.loadType = (lt==="point") ? 0 : 1;
+      p.P = P;
+      p.a = a;
+      p.w = w;
+      p.sigmaMax = sigmaMax;
+
+      applyParamsToUniforms(); // ✅ 2回目以降もここで確実に変わる
+
+      // UI
       const maxMPa = sigmaMax / 1e6;
       const allow = num(allowMPa.value, 20);
       const sf = (maxMPa > 0) ? (allow / maxMPa) : Infinity;
 
-      outL.textContent = `${nice(L,3)} m（軸:${beamAxisSel.toUpperCase()}）`;
+      outL.textContent = `${nice(L,3)} m（軸:${axisSelVal.toUpperCase()}）`;
       outBH.textContent = `${nice(b,3)} m × ${nice(h,3)} m`;
       outMax.textContent = `${nice(maxMPa,3)} MPa`;
       outSF.textContent = isFinite(sf) ? nice(sf,3) : "—";
       legendMax.textContent = `${nice(maxMPa,3)} MPa`;
       outDbg.textContent = (lt==="point")
-        ? `P=${nice(P,3)}N a=${nice(a,3)}m L=${nice(L,3)}m max|M|=${nice(maxM,3)} N·m`
-        : `w=${nice(w,3)}N/m L=${nice(L,3)}m max|M|=${nice(maxM,3)} N·m`;
-
-      // シェーダに反映（minAはbbox.min[axis]）
-      updateShaderUniforms({
-        axis: axisIndex,
-        minA: bbox.min[beamAxisSel],
-        L, h, I,
-        loadType: (lt==="point" ? 0 : 1),
-        P, a, w,
-        sigmaMax
-      });
-
-      // material更新
-      mesh.material.needsUpdate = true;
+        ? `P=${nice(P,3)}N a=${nice(a,3)}m max|M|=${nice(maxM,3)} N·m`
+        : `w=${nice(w,3)}N/m max|M|=${nice(maxM,3)} N·m`;
 
       setStatus("解析できました", sf>=1 ? "good" : "bad");
     });
 
     resetBtn.addEventListener("click", ()=>{
-      if(mesh){
-        mesh.material = new THREE.MeshStandardMaterial({ color: 0x9fb2ff, roughness: 0.8, metalness: 0 });
+      if(!heatMat){
+        setStatus("リセットしました","info");
+        return;
       }
+      heatMat.userData.params.show = 0;   // ✅ material差し替え禁止。showを切るだけ
+      applyParamsToUniforms();
+
       setStatus("リセットしました","info");
       outL.textContent = outBH.textContent = outMax.textContent = outSF.textContent = outDbg.textContent = "—";
       legendMax.textContent = "— MPa";
